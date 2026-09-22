@@ -1,0 +1,20 @@
+[project]
+name = "camaritas-agent"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "paho-mqtt>=2.1.0",
+    "pyyaml>=6.0",
+    "structlog>=24.4.0",
+    "requests>=2.32.0",
+    # DVRIP para las XiongMai / iCSee. No está en PyPI con todo al día:
+    # pip install git+https://github.com/OpenIPC/python-dvr
+    "python-dvr",
+]
+
+[project.optional-dependencies]
+onvif = ["onvif-zeep-async>=3.1.0"]
+dev = ["pytest>=8.3.0", "ruff>=0.8.0"]
+
+[tool.ruff]
+line-length = 100

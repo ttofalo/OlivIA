@@ -1,0 +1,20 @@
+# Una credencial por dispositivo. Cada uno solo toca lo suyo.
+
+user gateway
+topic write wsp/in
+topic read  wsp/out
+
+user brain
+topic read  wsp/in
+topic write wsp/out
+topic write casa/cmd/#
+topic read  casa/evt/#
+
+user agent
+topic read  casa/cmd/cam/#
+topic write casa/evt/cam/#
+topic write casa/evt/agent/#
+
+# Un ESP32 por boyero. No puede ni ver los topics de cámaras.
+pattern read  casa/cmd/boyero/%u/#
+pattern write casa/evt/boyero/%u/#

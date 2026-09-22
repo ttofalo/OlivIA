@@ -1,0 +1,16 @@
+[Unit]
+Description=camaritas agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/camaritas/services/agent
+EnvironmentFile=/home/pi/camaritas/services/agent/.env
+ExecStart=/home/pi/camaritas/services/agent/.venv/bin/python -m agent.main
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

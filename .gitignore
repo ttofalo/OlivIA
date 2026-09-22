@@ -1,0 +1,37 @@
+# credenciales y config real
+.env
+.env.*
+!.env.example
+config/devices.yaml
+auth/
+*.pem
+*.key
+*.crt
+
+# sesión de whatsapp
+services/gateway/baileys_auth/
+
+# media capturada
+media/
+snapshots/
+*.jpg
+*.jpeg
+*.png
+*.mp4
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# node
+node_modules/
+dist/
+*.tsbuildinfo
+
+# sistema
+.DS_Store

@@ -1,0 +1,58 @@
+# Corre en el VPS. El agente de casa NO está acá: se instala aparte en la Pi
+# (ver services/agent/README.md).
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    ports:
+      - "8883:8883"
+    volumes:
+      - ./infra/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./infra/mosquitto/acl:/mosquitto/config/acl:ro
+      - ./infra/mosquitto/passwd:/mosquitto/config/passwd:ro
+      - ./infra/mosquitto/certs:/mosquitto/certs:ro
+      - mosquitto_data:/mosquitto/data
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      retries: 5
+
+  gateway:
+    build: ./services/gateway
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      - mosquitto
+    volumes:
+      # La sesión de WhatsApp vive acá. Si se borra, hay que escanear el QR otra vez.
+      - ./services/gateway/baileys_auth:/app/baileys_auth
+      - media:/media
+
+  brain:
+    build: ./services/brain
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      mosquitto:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./config:/app/config:ro
+      - media:/media
+
+volumes:
+  mosquitto_data:
+  pg_data:
+  media:

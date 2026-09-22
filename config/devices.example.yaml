@@ -1,0 +1,65 @@
+# Inventario de dispositivos. Copiar a devices.yaml y completar con lo que
+# devuelva scripts/discover.py. Este archivo es la fuente de verdad: el router
+# de Jev arma sus opciones desde acá, así que la descripción de cada dispositivo
+# es parte del prompt. Escribirlas como las diría alguien de la familia.
+
+camaras:
+  cabania:
+    nombre: Cabaña
+    descripcion: >
+      Cámara de la cabaña de al lado. Apunta al portón y al camino de entrada.
+      Es la que movemos seguido.
+    ip: 192.168.1.50
+    marca: xiongmai
+    puertos:
+      dvrip: 34567
+      rtsp: 554
+      onvif: 8899
+    usuario: admin
+    password_env: CAM_CABANIA_PASS
+    ptz: true
+    canal: 1
+    via: directa          # directa | nvr
+    presets:
+      porton: 1
+      camino: 2
+      galpon: 3
+
+  frente:
+    nombre: Frente
+    descripcion: Cámara del frente de la casa, ve la vereda y la entrada de autos.
+    ip: 192.168.1.51
+    marca: xiongmai
+    puertos:
+      dvrip: 34567
+      rtsp: 554
+    usuario: admin
+    password_env: CAM_FRENTE_PASS
+    ptz: false
+    canal: 1
+    via: nvr
+
+  # patio:
+  # galpon:
+
+nvr:
+  principal:
+    nombre: NVR de la casa
+    ip: 192.168.1.10
+    puertos:
+      dvrip: 34567
+      rtsp: 554
+    usuario: admin
+    password_env: NVR_PASS
+    canales:
+      frente: 1
+      patio: 2
+      galpon: 3
+
+boyeros:
+  fondo:
+    nombre: Boyero del fondo
+    descripcion: Alambrado del potrero de atrás.
+    device_id: esp32-boyero-fondo
+    controla: true      # tiene relé, se puede cortar
+    mide: voltaje
