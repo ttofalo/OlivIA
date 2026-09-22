@@ -530,6 +530,28 @@
  },
  {
   "archived": false,
+  "description": "A universal git-native AI agent framework. Your agent lives inside a git repo — identity, rules, memory, tools, and skills are all version-controlled files.",
+  "forks": 130,
+  "full_name": "open-gitagent/gitagent",
+  "lang": "Rust",
+  "license": "MIT",
+  "pushed": "2026-08-20T06:54:09Z",
+  "stars": 700,
+  "topics": [
+   "ai-agents",
+   "anthropic",
+   "assistant",
+   "llm",
+   "openclaw",
+   "personal"
+  ],
+  "url": "https://github.com/open-gitagent/gitagent",
+  "dominios": [
+   "agentes"
+  ]
+ },
+ {
+  "archived": false,
   "description": "A curated list of tools  built for Jev — TypeSafe AI's System One model for typed decisions.",
   "forks": 12,
   "full_name": "v-modal/awesome-jev-tools",
@@ -566,6 +588,30 @@
   "url": "https://github.com/quatanium/python-onvif",
   "dominios": [
    "directo"
+  ]
+ },
+ {
+  "archived": false,
+  "description": "Your own personal voice assistant: Voice to Text to LLM to Speech, displayed in a web interface",
+  "forks": 100,
+  "full_name": "AlexandreSajus/JARVIS",
+  "lang": "Python",
+  "license": "GPL-3.0",
+  "pushed": "2024-06-09T00:16:29Z",
+  "stars": 528,
+  "topics": [
+   "deepgram",
+   "elevenlabs",
+   "llm",
+   "openai",
+   "python",
+   "taipy",
+   "tts",
+   "voice-assistant"
+  ],
+  "url": "https://github.com/AlexandreSajus/JARVIS",
+  "dominios": [
+   "agentes"
   ]
  },
  {
@@ -638,6 +684,7 @@
   "topics": [],
   "url": "https://github.com/zszszszsz/.config",
   "dominios": [
+   "alertas",
    "nvr-vision",
    "onvif-rtsp"
   ]
@@ -1039,6 +1086,35 @@
  },
  {
   "archived": false,
+  "description": "Apply LLMs to your data, build personal assistants, and expand your use of LLMs with agents, chains, and memories.",
+  "forks": 76,
+  "full_name": "ksm26/LangChain-for-LLM-Application-Development",
+  "lang": "Jupyter Notebook",
+  "license": "none",
+  "pushed": "2025-08-24T15:21:40Z",
+  "stars": 155,
+  "topics": [
+   "agents",
+   "application-development",
+   "chains",
+   "chatbots",
+   "development-tools",
+   "diffusion-models",
+   "langchain",
+   "language-model",
+   "llms",
+   "memories",
+   "models",
+   "personal-assistant",
+   "prompts"
+  ],
+  "url": "https://github.com/ksm26/LangChain-for-LLM-Application-Development",
+  "dominios": [
+   "agentes"
+  ]
+ },
+ {
+  "archived": false,
   "description": "Experiments with cheap Linux cameras",
   "forks": 28,
   "full_name": "OpenIPC/camerasrnd",
@@ -1409,6 +1485,37 @@
  },
  {
   "archived": false,
+  "description": "Open-source AI agent runtime built in Rust. Define once, deploy isolated instances per tenant with built-in memory, encrypted vault, self-extending skills, cron, and multi-channel support.",
+  "forks": 16,
+  "full_name": "sinaptik-ai/starpod",
+  "lang": "Rust",
+  "license": "MIT",
+  "pushed": "2026-04-08T16:55:24Z",
+  "stars": 78,
+  "topics": [
+   "agent",
+   "agent-runtime",
+   "agentic-ai",
+   "ai",
+   "ai-agent",
+   "ai-infrastructure",
+   "assistant",
+   "autonomous-agents",
+   "claude",
+   "llm",
+   "molty",
+   "multi-tenant",
+   "openclaw",
+   "personal",
+   "rust"
+  ],
+  "url": "https://github.com/sinaptik-ai/starpod",
+  "dominios": [
+   "agentes"
+  ]
+ },
+ {
+  "archived": false,
   "description": "A curated collection of OpenClaw tutorials, skills, and use cases. Learn how to build your personal AI assistant with 5400+ skills, multi-agent routing, and chat app integration (WhatsApp/Telegram/Discord/iMessage).",
   "forks": 13,
   "full_name": "ZeroLu/awesome-openclaw",
@@ -1650,6 +1757,28 @@
  },
  {
   "archived": false,
+  "description": "Wyoming Piper docker container with GPU support for Home-Assistant",
+  "forks": 7,
+  "full_name": "slackr31337/wyoming-piper-gpu",
+  "lang": "Python",
+  "license": "none",
+  "pushed": "2025-08-10T02:05:23Z",
+  "stars": 57,
+  "topics": [
+   "home-assistant",
+   "piper-tts",
+   "tts",
+   "voice-agent",
+   "voice-assistant",
+   "wyoming"
+  ],
+  "url": "https://github.com/slackr31337/wyoming-piper-gpu",
+  "dominios": [
+   "voz"
+  ]
+ },
+ {
+  "archived": false,
   "description": "Building a WhatsApp Chatbot with Python, Twilio, and EC2: Introducing ChatGPT WhatsApp Bot.",
   "forks": 23,
   "full_name": "Spidy20/ChatGPT_Whatsapp_Bot",
@@ -1751,6 +1880,34 @@
   "url": "https://github.com/openvideolibs/python-onvif-zeep-async",
   "dominios": [
    "directo"
+  ]
+ },
+ {
+  "archived": false,
+  "description": "A highly customizable personal AI assistant for Discord featuring smart agentic AI features such as memory, personas, tool usage, and more! ｜ 長期記憶やペルソナ、ツール連携を完備。 次世代の「自律型AIエージェント」Discordボット！",
+  "forks": 11,
+  "full_name": "Bredrumb/TomoriBot",
+  "lang": "TypeScript",
+  "license": "AGPL-3.0",
+  "pushed": "2026-09-21T16:06:11Z",
+  "stars": 52,
+  "topics": [
+   "agentic-ai",
+   "ai-agent",
+   "ai-assistant",
+   "discord-bot",
+   "llm",
+   "mcp",
+   "memory",
+   "openai",
+   "persona",
+   "rag",
+   "roleplay",
+   "self-hosted"
+  ],
+  "url": "https://github.com/Bredrumb/TomoriBot",
+  "dominios": [
+   "agentes"
   ]
  },
  {
@@ -1952,6 +2109,32 @@
  },
  {
   "archived": false,
+  "description": "Local AI Agent firmware running on ESP32-S3, integrating offline voice wake-up with cloud TTS, supporting local LLM inference, tool calling, long-term memory storage and autonomous task execution.",
+  "forks": 7,
+  "full_name": "beancookie/xiaoclaw",
+  "lang": "C++",
+  "license": "MIT",
+  "pushed": "2026-05-13T14:00:02Z",
+  "stars": 42,
+  "topics": [
+   "assistant",
+   "chatbot",
+   "edge-ai-agents",
+   "embedded",
+   "esp32",
+   "idf-esp",
+   "openclaw",
+   "own-your-data",
+   "personal",
+   "xiaozhi-esp32"
+  ],
+  "url": "https://github.com/beancookie/xiaoclaw",
+  "dominios": [
+   "agentes"
+  ]
+ },
+ {
+  "archived": false,
   "description": "World Best Multi Language Whatsapp Advanced Chat Bot ",
   "forks": 192,
   "full_name": "DarkWinzo/Queen-AI",
@@ -2044,6 +2227,21 @@
   "url": "https://github.com/jens62/geberit-aquaclean",
   "dominios": [
    "home-assistant"
+  ]
+ },
+ {
+  "archived": false,
+  "description": "Neural Text to speech model that is a perfect voice for a home assistant, audiobooks or for screen readers on Linux, Mac and Windows. A faster than real time Text-to-speech model that is heavily inspired by the original Ivona Amy voices that runs on any and all platforms thanks to Piper text-to-speech.",
+  "forks": 0,
+  "full_name": "sweetbbak/Neural-Amy-TTS",
+  "lang": "Python",
+  "license": "none",
+  "pushed": "2023-10-10T07:59:04Z",
+  "stars": 38,
+  "topics": [],
+  "url": "https://github.com/sweetbbak/Neural-Amy-TTS",
+  "dominios": [
+   "voz"
   ]
  },
  {
@@ -2746,6 +2944,43 @@
   "url": "https://github.com/hoornet/nives",
   "dominios": [
    "home-assistant"
+  ]
+ },
+ {
+  "archived": false,
+  "description": "DIY pocket-sized ESP32 AI voice assistant using Xiaozhi with offline/online voice interaction, wake word, and compact hardware design.",
+  "forks": 4,
+  "full_name": "Rau7han/esp32-ai-pocket-assistant",
+  "lang": null,
+  "license": "MIT",
+  "pushed": "2026-04-06T18:13:44Z",
+  "stars": 21,
+  "topics": [],
+  "url": "https://github.com/Rau7han/esp32-ai-pocket-assistant",
+  "dominios": [
+   "voz"
+  ]
+ },
+ {
+  "archived": false,
+  "description": "Self-hosted uptime monitoring with 10+ protocols, real-time WebSocket updates, notifications, and an embedded web UI - all in a single Go binary.",
+  "forks": 0,
+  "full_name": "VitaliAndrushkevich/pulse",
+  "lang": "Go",
+  "license": "Apache-2.0",
+  "pushed": "2026-08-30T15:59:25Z",
+  "stars": 16,
+  "topics": [
+   "golang",
+   "kiro",
+   "monitoring",
+   "self-hosted",
+   "svelte",
+   "uptime"
+  ],
+  "url": "https://github.com/VitaliAndrushkevich/pulse",
+  "dominios": [
+   "alertas"
   ]
  },
  {

@@ -37,11 +37,32 @@ Las XiongMai se venden bajo muchas marcas (iCSee, XMEye, Sofia, NetSurveillance)
 | 8899 | ONVIF | PTZ y eventos estándar, si está habilitado |
 | 80 | HTTP | Interfaz web, a veces con snapshot directo |
 
-Librerías:
+Librerías y documentación del protocolo, con el veredicto de cada una en [PRIOR_ART.md](PRIOR_ART.md):
 
-- [OpenIPC/python-dvr](https://github.com/OpenIPC/python-dvr) — DVRIP en Python, incluye PTZ y presets
-- [dbuezas/icsee-ptz](https://github.com/dbuezas/icsee-ptz) — integración de Home Assistant con PTZ y presets, buena referencia de los comandos
-- [TheJenos/xmeye-control](https://github.com/TheJenos/xmeye-control) — otra integración con snapshots, PTZ y audio
+- [OpenIPC/python-dvr](https://github.com/OpenIPC/python-dvr) — DVRIP en Python, incluye PTZ y presets. La dependencia que usamos
+- [Códigos de DVRIP](https://gist.github.com/ekwoodrich/a6d7b8db8f82adf107c3c366e61fd36f) — tabla de respuestas y comandos del protocolo. Sin esto, un error de cámara es un número suelto
+- [TheJenos/xmeye-control](https://github.com/TheJenos/xmeye-control) — snapshots por DVRIP sin ffmpeg, y TTS por el parlante del NVR
+- [dbuezas/icsee-ptz](https://github.com/dbuezas/icsee-ptz) — referencia de los comandos PTZ. Sin licencia, así que se lee y no se copia
+- [kinsi55/node_dvripclient](https://github.com/kinsi55/node_dvripclient) — el parser de paquetes de video más legible, en JavaScript
+- [janglapuk/xiongmai-cam-api](https://github.com/janglapuk/xiongmai-cam-api) — cuatro archivos, para entender el handshake antes de debuggear
+
+### Qué significan los códigos que devuelve una cámara
+
+Los más frecuentes, del gist de arriba:
+
+| Código | Qué pasó |
+|---|---|
+| 100 | Éxito |
+| 101 | Error desconocido |
+| 106 | Usuario o contraseña incorrectos |
+| 107 | Permisos insuficientes |
+| 108 | Timeout |
+| 109 | No encontró el archivo |
+| 117 | El mensaje está mal formado |
+| 118 | La cámara no tiene protocolo PTZ configurado |
+| 121 | El canal digital no está habilitado |
+
+El 118 es el que importa para la cabaña: si aparece, la cámara acepta comandos PTZ pero no tiene el protocolo seteado, y eso se arregla desde iCSee.
 
 ## Lo que hay que verificar en casa
 

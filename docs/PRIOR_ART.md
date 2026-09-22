@@ -1,126 +1,149 @@
 # Qué reutilizamos y de dónde
 
-Barrido de GitHub del 2026-09-21: 36 búsquedas por dominio más lookup directo, 149 repos únicos en [prior-art/candidatos.json](prior-art/candidatos.json).
+Barrido de GitHub del 2026-09-21: 62 búsquedas por dominio más lookup directo, 159 repos únicos. Los clasificó Jev con [scripts/rank_repos.py](../scripts/rank_repos.py) en 2 minutos y 16 segundos, con `jev-1.13.0`, y descartó 46.
 
-El ranking con Jev está en [../scripts/rank_repos.py](../scripts/rank_repos.py) y todavía no corrió: el AI Gateway devuelve 403 hasta que la cuenta de Vercel tenga tarjeta. Los veredictos de acá abajo salen de leer los repos, no del modelo.
+Los datos crudos: [prior-art/candidatos.json](prior-art/candidatos.json) y [prior-art/ranking.json](prior-art/ranking.json).
 
-## Dos hallazgos que cambian el plan
+Cada repo se puntuó por rol (dependencia, fork, referencia, descartar), cuánto cuesta aprovecharlo, si resuelve algo difícil de escribir de cero y si está atado a Home Assistant. La licencia y los meses sin actividad se calculan sin modelo.
 
-### El backend de boyeros ya existe
+## Dónde está lo difícil
 
-[ttofalo/automatizacion-boyeros-backend](https://github.com/ttofalo/automatizacion-boyeros-backend) es tuyo, de enero a abril de 2026. FastAPI con SQLAlchemy y SQLite, routers para `/boyeros`, `/esp` y `/auth`, login por PIN con JWT, WebSockets con un `websocket_manager` y un `state_service`, y scripts de deploy.
+Ordenando los 159 por "resuelve algo que sería difícil de escribir de cero", los siete primeros son lo mismo: el protocolo DVRIP y el streaming de video.
 
-Los ESP32 del campo ya le hablan por HTTP y WebSocket, y ya funcionan. La fase 4 del roadmap decía escribir firmware con MQTT desde cero, y eso ahora es trabajo de más.
+| | Repo | Rol | Meses sin tocar |
+|---|---|---|---|
+| 0.87 | alexshpilkin/dvrip | dependencia | 48 |
+| 0.85 | TGJ27/xm-camera-dvrip-cpp | dependencia | 2 |
+| 0.83 | kinsi55/node_dvripclient | dependencia | 60 |
+| 0.82 | sofia-netsurv/python-netsurv | dependencia | 65 |
+| 0.82 | KostasEreksonas/DVRIP_analysis | referencia | 3 |
+| 0.81 | janglapuk/xiongmai-cam-api | dependencia | 59 |
+| 0.78 | bluenviron/mediamtx | dependencia | 0 |
 
-**Lo que conviene:** OlivIA consume ese backend por HTTP en vez de reimplementar el canal. El `brain` le pega a `/boyeros` para leer estado y a su endpoint de control para cortar, y los ESP32 siguen hablando con lo que ya conocen. Dos cosas a resolver: el backend usa JWT con PIN, así que OlivIA necesita su propia credencial de servicio, y hay que decidir si se levanta en el mismo VPS o queda donde está.
+Hay un patrón incómodo en esa columna de la derecha. Lo que resuelve el protocolo se escribió entre 2017 y 2021 y está frío. Lo que está caliente son integraciones de Home Assistant de 2026. El protocolo no cambió en ocho años, así que el código viejo sigue sirviendo, pero nadie lo mantiene.
 
-Queda una asimetría: cámaras por MQTT, boyeros por HTTP. Vale la pena igual, porque el hardware del campo ya está andando y tocarlo es el riesgo más caro del proyecto.
+Conclusión para el proyecto: el conocimiento de DVRIP se saca de los repos viejos y el código que se instala sale de los nuevos.
 
-### Las cámaras pueden hablar
+## Los mejores, y qué sacamos de cada uno
 
-[LucaCraft89/xm-cam-talk](https://github.com/LucaCraft89/xm-cam-talk) implementa el canal `OPTalk` de DVRIP, que es el que usa el botón de hablar de iCSee. Expone un bridge Docker con API HTTP y WebSocket, además de la integración de Home Assistant.
+### 1. baileys-antiban
 
-Eso significa que OlivIA puede contestar por el parlante de una cámara, no solo por WhatsApp. Para el objetivo de que termine siendo un Jarvis, es la diferencia entre un bot que manda fotos y algo que está presente en la casa.
+[kobie3717/baileys-antiban](https://github.com/kobie3717/baileys-antiban), 149 estrellas, MIT, 40 versiones publicadas en npm, última de junio de 2026.
 
-[TheJenos/xmeye-control](https://github.com/TheJenos/xmeye-control) llega al mismo lugar por otro lado: convierte el NVR en un `media_player` de Home Assistant y le manda TTS.
+**Qué sacamos: la dependencia entera.** Rate limiting con jitter gaussiano, simulación de tipeo, warm-up de siete días para números nuevos, monitor de salud que detecta señales de ban antes de que llegue, auto-pausa cuando el riesgo sube, y clasificador de desconexiones. Se envuelve el socket en una línea.
 
-Riesgo de xm-cam-talk: todos los commits son del 29 de agosto de 2026, un solo día, y tiene cero estrellas. El valor está en el protocolo resuelto, así que lo trataría como código a leer y portar, no como dependencia.
+Esto ataca el riesgo más concreto del proyecto: que Meta banee el número. Ya está aplicado en `services/gateway`.
 
-## Por capa
+Cuidado con la versión: en npm va por la 4.10.0, y la copia que circula dentro de otros repos es la 1.0.0. Usar el paquete, no el vendorizado.
 
-### Cámaras XiongMai (DVRIP, puerto 34567)
+### 2. TheJenos/xmeye-control
 
-| Repo | Stars | Último push | Licencia | Veredicto |
-|---|---|---|---|---|
-| [OpenIPC/python-dvr](https://github.com/OpenIPC/python-dvr) | 77 | 2026-09 | MIT | **Dependencia.** La librería base, activa. Ya está en `services/agent/pyproject.toml` |
-| [TheJenos/xmeye-control](https://github.com/TheJenos/xmeye-control) | 0 | 2026-09 | MIT | **Referencia fuerte.** Tiene tests, CI y snapshots por DVRIP. El código más nuevo del rubro |
-| [equake/hass-xmeye](https://github.com/equake/hass-xmeye) | 7 | 2026-08 | MIT | **Referencia.** Integra go2rtc, docs largos sobre el protocolo |
-| [dbuezas/icsee-ptz](https://github.com/dbuezas/icsee-ptz) | 126 | 2026-01 | sin licencia | **Referencia de comandos PTZ.** 28 issues abiertos y poco movimiento. Sin licencia, así que no se copia código |
-| [LucaCraft89/xm-cam-talk](https://github.com/LucaCraft89/xm-cam-talk) | 0 | 2026-08 | MIT | **Portar.** Audio bidireccional por OPTalk |
-| [alexshpilkin/dvrip](https://github.com/alexshpilkin/dvrip) | 75 | 2022 | CC0 | **Referencia de protocolo.** Archivado, pero la documentación del framing sirve |
-| [KostasEreksonas/DVRIP_analysis](https://github.com/KostasEreksonas/DVRIP_analysis) | 2 | 2026-07 | GPL-3.0 | **Herramienta.** Disector de Wireshark para DVRIP. Para cuando un comando no responda y haya que ver el cable |
-| [bsergei/DvrMqtt](https://github.com/bsergei/DvrMqtt) | 8 | 2025-12 | GPL-3.0 | **Referencia.** DVRIP a MQTT, que es exactamente nuestro puente, pero en C# |
+Cero estrellas, MIT, con tests y CI, último commit de hace días.
 
-Un cambio de diseño que sale de leer estos: **xmeye-control saca snapshots por DVRIP, sin RTSP ni ffmpeg.** El agente hoy levanta un proceso de ffmpeg por foto, que en una Pi cuesta y tarda entre 1 y 3 segundos. Si el snapshot sale del mismo socket DVRIP que ya usamos para PTZ, se va todo el ffmpeg y baja la latencia. Vale probar las dos vías en la fase 1 y medir.
+**Qué sacamos: dos técnicas.** Los snapshots salen por DVRIP, sin RTSP ni ffmpeg, del mismo socket que ya usamos para PTZ. Y convierte el NVR en parlante: le manda TTS y el equipo habla.
 
-### Streaming y snapshots
+Hoy `services/agent/agent/snapshot.py` levanta un proceso de ffmpeg por foto, que en una Pi cuesta y tarda entre 1 y 3 segundos. Si el frame sale del socket DVRIP, se va todo el ffmpeg de la fase 1.
 
-| Repo | Stars | Veredicto |
+Es una integración de Home Assistant (Jev le puso 0.71 de atado a HA), así que hay que portar la lógica, no instalarla.
+
+### 3. El gist de códigos del protocolo
+
+[ekwoodrich/a6d7b8db8f82adf107c3c366e61fd36f](https://gist.github.com/ekwoodrich/a6d7b8db8f82adf107c3c366e61fd36f), actualizado en junio de 2026.
+
+**Qué sacamos: la tabla de códigos de respuesta y comandos de DVRIP.** Los 100 a 121 con su significado, del 100 que es éxito al 118 que avisa que la cámara no tiene protocolo PTZ configurado.
+
+Sin esto, un error de DVRIP es un número sin contexto. Con esto, el agente puede distinguir "contraseña incorrecta" de "esta cámara no tiene PTZ" y contestarte algo útil en vez de un stack trace.
+
+### 4. kinsi55/node_dvripclient
+
+30 estrellas, MIT, sin tocar desde 2021.
+
+**Qué sacamos: el parser de paquetes de video y las tablas de constantes.** Tiene `constants/Messages.js`, `ResponseCodes.js` y `VideopacketPayloads.js`, más un `dvripstreamclient.js` y ejemplos que graban 10 segundos a MP4 y relayean el stream.
+
+Es JavaScript, el lenguaje del gateway, y es la implementación más legible del framing de video sobre DVRIP que encontré. Sirve para entender cómo sacar un frame sin RTSP.
+
+### 5. AlexxIT/go2rtc
+
+14230 estrellas, MIT, activo.
+
+**Qué sacamos: el plan B del snapshot.** Un binario en la Pi con API HTTP para pedir una imagen, y maneja RTSP roto mejor que ffmpeg suelto. Si el snapshot por DVRIP falla en alguna de tus cámaras, esto lo cubre sin escribir nada.
+
+### 6. LucaCraft89/xm-cam-talk
+
+Cero estrellas, MIT, todos los commits del 29 de agosto de 2026.
+
+**Qué sacamos: el canal `OPTalk` resuelto.** Es el que usa el botón de hablar de iCSee, y no es ONVIF ni un backchannel de RTSP, así que go2rtc y Frigate no lo pueden manejar. Trae un bridge Docker con API HTTP y WebSocket, o sea que se usa sin Home Assistant.
+
+Con esto OlivIA contesta por el parlante de una cámara. Para el objetivo del Jarvis, es la diferencia entre mandar fotos y estar presente en la casa.
+
+Un solo día de commits, así que lo trato como protocolo resuelto para portar, no como dependencia que va a tener mantenimiento.
+
+### 7. janglapuk/xiongmai-cam-api
+
+27 estrellas, MIT, 2021.
+
+**Qué sacamos: la versión legible del protocolo.** Cuatro archivos: `xmcam.py`, `xmconst.py`, `sound.py` y un ejemplo. Portado de un script en Perl.
+
+`OpenIPC/python-dvr` es la librería que vamos a usar, pero es grande. Este se lee en una tarde y deja entender qué hace el handshake antes de debuggear el otro.
+
+### 8. kiwimato/dvrbridge
+
+Cero estrellas, MIT, agosto de 2026, Python puro sin dependencias.
+
+**Qué sacamos: una idea de diseño.** Conecta al DVR solo mientras alguien está mirando, con linger configurable, y reconecta con backoff. Lo llama ser cortés con hardware frágil.
+
+Tus cámaras son las que son, y cuatro clientes DVRIP simultáneos las pueden marear. El agente debería abrir el socket cuando hay pedido y cerrarlo después, que es lo que ya hace `cameras.py` con su context manager, y esto confirma el criterio.
+
+### 9. sofia-netsurv/python-netsurv
+
+80 estrellas, MIT, 2021.
+
+**Qué sacamos: el linaje y la documentación.** Es el ancestro de `python-dvr` y el que publica el gist de códigos. Tiene un virtualenv entero commiteado, así que no se instala, se lee.
+
+### 10. ttofalo/automatizacion-boyeros-backend
+
+Tuyo, de enero a abril de 2026. FastAPI con SQLAlchemy y SQLite, routers de `/boyeros`, `/esp` y `/auth`, login por PIN con JWT, WebSockets con manager de estado y scripts de deploy.
+
+**Qué sacamos: todo, tal como está.** Los ESP32 del campo ya le hablan y ya funcionan. La fase 4 pasa de escribir firmware con MQTT a consumir esta API por HTTP. Quedó como decisión [007](DECISIONS.md).
+
+## Lo que cambia en el plan
+
+| Qué | Antes | Ahora |
 |---|---|---|
-| [AlexxIT/go2rtc](https://github.com/AlexxIT/go2rtc) | 14230 | **Dependencia, si el snapshot por DVRIP no alcanza.** Un binario en la Pi, API HTTP para snapshots, maneja RTSP roto mejor que ffmpeg suelto |
-| [bluenviron/mediamtx](https://github.com/bluenviron/mediamtx) | 20220 | Alternativa a go2rtc, más orientada a servidor de streams que a cámaras |
-| [kiwimato/dvrbridge](https://github.com/kiwimato/dvrbridge) | 0 | **Referencia.** Servidor RTSP en Python puro sin ffmpeg, y una idea buena: conecta al DVR solo cuando alguien mira, para no castigar hardware frágil |
+| Snapshot | ffmpeg sobre RTSP | Probar DVRIP primero, ffmpeg o go2rtc como respaldo |
+| Ban de WhatsApp | Reglas de uso escritas en un README | `baileys-antiban` envolviendo el socket |
+| Errores de cámara | Un número sin contexto | Tabla de códigos del gist, traducida a mensajes |
+| Boyeros | Firmware nuevo con MQTT | La API que ya existe, por HTTP |
+| Audio | Solo WhatsApp | El parlante de las cámaras, portando OPTalk |
 
-### Eventos de movimiento
+## Home Assistant
 
-| Repo | Stars | Veredicto |
-|---|---|---|
-| [toxuin/alarmserver](https://github.com/toxuin/alarmserver) | 175 | **Referencia.** Alarmas de cámaras IP a MQTT, pero apunta a Hikvision y Dahua y no se toca desde 2024 |
-| [blakeblackshear/frigate](https://github.com/blakeblackshear/frigate) | 36039 | **No por ahora.** Detección local de objetos, el estándar del rubro. Pide más máquina que una Pi 4, con acelerador tipo Coral. Evaluarlo en la fase 5 si querés distinguir una persona de un perro, y ahí con un mini PC |
+No lo adoptamos. Jev marcó como atados a HA a casi todos los repos frescos de XiongMai: `xmeye-control` 0.71, `equake/hass-xmeye` 0.74, `Noneawe/ha-xmeye-nvr` 0.75. Ahí está el costo de la decisión, y es real: hay que portar en vez de instalar.
 
-Para la fase 5, las integraciones de DVRIP ya suscriben el canal de alarmas del NVR. Eso es más barato que meter detección propia.
+La alternativa sería montar HA y que OlivIA le hable por su API. Ganás integraciones hechas y perdés el control del camino crítico: cada foto pasaría por HA, y HA en una Pi con cuatro cámaras es una pieza más entre el pedido y la respuesta. Queda como decisión [008](DECISIONS.md), a reconsiderar en la fase 7.
 
-### WhatsApp
+## Descartados
 
-| Repo | Stars | Veredicto |
-|---|---|---|
-| [WhiskeySockets/Baileys](https://github.com/WhiskeySockets/Baileys) | 11116 | **Dependencia.** Ya decidido en [DECISIONS.md](DECISIONS.md) 002 |
-| [tulir/whatsmeow](https://github.com/tulir/whatsmeow) | 7386 | **Plan B.** Go, MPL-2.0, y lo usa `mautrix/whatsapp` en producción desde años. Si Baileys se rompe seguido, este es el reemplazo |
-| [wwebjs/whatsapp-web.js](https://github.com/wwebjs/whatsapp-web.js) | 22608 | **Descartado.** Levanta un Chromium headless. Sobra para un VPS chico |
-| [raulpetruta/ha-wa-bridge](https://github.com/raulpetruta/ha-wa-bridge) | 134 | **Referencia.** WhatsApp dentro de Home Assistant, útil para ver cómo separan la sesión del resto |
+Jev tiró 46. Los grupos:
 
-### Voz
+- **Bots de WhatsApp de spam.** DANUWA-BOT, silentwolf, DREADED-GPT-AI y parientes. Son bots de warez con cientos de comandos y cero arquitectura.
+- **Listas awesome de Jev.** Encontré nueve, con estrellas infladas y el mismo contenido. Sobreviven dos: [Anil-matcha/awesome-jev-by-typesafe](https://github.com/Anil-matcha/awesome-jev-by-typesafe) por el starter code y [dbreunig/building-with-jev-skill](https://github.com/dbreunig/building-with-jev-skill) por los patrones de preguntas.
+- **Wrappers de ChatGPT para WhatsApp por Twilio.** Resuelven el problema de otro: mandar mensajes a clientes, no controlar una casa.
+- **Whisper y derivados como repo.** Se usan como paquete, no como código a leer.
 
-| Repo | Stars | Veredicto |
-|---|---|---|
-| [ggml-org/whisper.cpp](https://github.com/ggml-org/whisper.cpp) | 53845 | **Dependencia.** Activo, corre en CPU del VPS con el modelo `base` |
-| [SYSTRAN/faster-whisper](https://github.com/SYSTRAN/faster-whisper) | 25507 | Alternativa en Python, sin push desde 2025-11 |
+Jev también se equivocó en algunos. Puso `sweetbbak/Neural-Amy-TTS` primero entre las dependencias con esfuerzo 1.03, y es una voz de TTS sin relación con el proyecto. En los casos así la confianza venía baja: de los 53 que marcó como dependencia o fork, 31 tienen confianza bajo 0.5. El ranking sirve para ordenar la lectura, no para decidir solo.
 
-Con la key del AI Gateway que ya tenés hay una tercera vía: transcribir contra el gateway y usar la misma credencial para Jev y para el audio. Menos que instalar en el VPS, y cuesta por minuto.
+## Un dato de seguridad
 
-### Jev
+[d3fudd/Xiongmai-Net-Surveillance-Authentication](https://github.com/d3fudd/Xiongmai-Net-Surveillance-Authentication) es un exploit público de octubre de 2025 que saltea la autenticación de las cámaras XiongMai. Y [KostasEreksonas/Besder-6024PB-XMA501-ip-camera](https://github.com/KostasEreksonas/Besder-6024PB-XMA501-ip-camera) es una investigación de seguridad sobre una cámara de la misma familia.
 
-| Repo | Stars | Veredicto |
-|---|---|---|
-| [typesafe-ai/typesafe-sdk-python](https://github.com/typesafe-ai/typesafe-sdk-python) | 186 | **Dependencia.** El SDK oficial, ya está en `services/brain/pyproject.toml` |
-| [moritzkremb/jev-voice-browser](https://github.com/moritzkremb/jev-voice-browser) | 209 | **Referencia, la más cercana a lo nuestro.** Voz a intent con Jev y después la acción |
-| [dbreunig/building-with-jev-skill](https://github.com/dbreunig/building-with-jev-skill) | 128 | **Referencia.** Patrones para escribir las preguntas |
-| [Anil-matcha/awesome-jev-by-typesafe](https://github.com/Anil-matcha/awesome-jev-by-typesafe) | 765 | **Referencia.** Starter code y casos con evidencia |
-| [wfzyx/von](https://github.com/wfzyx/von) | 367 | **Escape hatch.** System One open source, Apache-2.0, sub-15ms. Si Jev sube de precio o querés correrlo en el VPS |
-| [ikermoel/open-alternative-jev](https://github.com/ikermoel/open-alternative-jev) | 47 | Otra alternativa abierta, más chica |
-
-Hay nueve listas "awesome-jev" con estrellas infladas y contenido repetido. Las descarto salvo las dos de arriba.
-
-### Boyeros y ESP32
-
-| Repo | Veredicto |
-|---|---|
-| [ttofalo/automatizacion-boyeros-backend](https://github.com/ttofalo/automatizacion-boyeros-backend) | **Reutilizar.** Ver arriba |
-| [esphome/esphome](https://github.com/esphome/esphome) | **Dependencia para hardware nuevo.** Los ESP32 que ya andan no se tocan. Para el próximo sensor, un YAML de veinte líneas |
-| [knolleary/pubsubclient](https://github.com/knolleary/pubsubclient) | Si algún ESP32 tiene que hablar MQTT a mano |
-
-Para la idea de los tanques de agua hay varios proyectos chicos con ESP32 y MQTT: [tank-buddy](https://github.com/tank-buddy/tank-buddy) en MicroPython y [fluidwire/esp32-hcsr04-tank-level](https://github.com/fluidwire/esp32-hcsr04-tank-level) con HC-SR04. Ninguno tiene tracción, pero el problema es chico y el código se lee en una tarde.
-
-### Home Assistant
-
-No lo adoptamos, y conviene dejar escrito por qué. Casi todo el prior art de cámaras XiongMai vive como integración de Home Assistant, así que hay que portar código en vez de instalarlo.
-
-La alternativa sería montar Home Assistant y que OlivIA le hable por su API. Ganás las integraciones hechas y perdés el control del camino crítico: cada foto pasaría por HA, y HA en una Pi con cuatro cámaras es una pieza más que se puede caer. Para la fase 7, cuando entren luces y portón, vale reconsiderarlo.
-
-Dos que sirven de referencia para cuando lleguemos a la fase 6: [hoornet/nives](https://github.com/hoornet/nives), un asistente con memoria persistente para HA, y [rusty4444/hermes-voice-ha-integration](https://github.com/rusty4444/hermes-voice-ha-integration), voz on-device.
-
-## Un dato de seguridad que apareció buscando
-
-[d3fudd/Xiongmai-Net-Surveillance-Authentication](https://github.com/d3fudd/Xiongmai-Net-Surveillance-Authentication) es un exploit público que saltea la autenticación de las cámaras XiongMai, de octubre de 2025. Y [KostasEreksonas/Besder-6024PB-XMA501-ip-camera](https://github.com/KostasEreksonas/Besder-6024PB-XMA501-ip-camera) es una investigación de seguridad sobre una cámara de la misma familia.
-
-O sea: la contraseña de tus cámaras no es una defensa. Cualquiera que llegue al puerto 34567 entra. Eso no cambia el plan, lo confirma: el agente local no expone nada, el router no abre puertos, y el P2P de iCSee conviene apagarlo. Está en [SECURITY.md](SECURITY.md), y ahora con un motivo concreto en vez de una precaución general.
+La contraseña de tus cámaras no es una defensa. Cualquiera que llegue al puerto 34567 entra. Eso no cambia el plan, lo confirma: el agente local no expone nada, el router no abre puertos, y el P2P de iCSee conviene apagarlo. Está en [SECURITY.md](SECURITY.md), ahora con un motivo concreto.
 
 ## Cómo repetir esto
 
 ```bash
-# el barrido está en el historial de esta sesión; el resultado, en prior-art/candidatos.json
-export AI_GATEWAY_API_KEY=vck_...
-python scripts/rank_repos.py docs/prior-art/candidatos.json
+export TYPESAFE_API_KEY=apikey_...
+python scripts/rank_repos.py docs/prior-art/candidatos.json --nativo
 ```
 
-El script pregunta a Jev, por cada repo, qué rol puede cumplir, cuánto cuesta aprovecharlo, si resuelve algo difícil de escribir de cero y si está atado a Home Assistant. La licencia y los meses sin actividad se calculan sin modelo, que para eso no hace falta.
+Costó 159 requests con unos 300 tokens de entrada cada uno. A 0.042 dólares el millón y con la salida gratis, la corrida completa sale menos de un centavo.

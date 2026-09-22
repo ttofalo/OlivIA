@@ -12,6 +12,7 @@
   "dependencies": {
     "@hapi/boom": "^10.0.1",
     "@whiskeysockets/baileys": "^6.7.23",
+    "baileys-antiban": "^4.10.0",
     "mqtt": "^5.10.1",
     "pino": "^9.5.0",
     "qrcode-terminal": "^0.12.0"

@@ -5,6 +5,7 @@ import makeWASocket, {
   type WASocket,
 } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
+import { wrapSocket } from "baileys-antiban";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import qrcode from "qrcode-terminal";
@@ -19,16 +20,21 @@ export async function startWhatsApp(
 ): Promise<WASocket> {
   const { state, saveCreds } = await useMultiFileAuthState(config.authDir);
 
-  const sock = makeWASocket({
+  const raw = makeWASocket({
     auth: state,
     logger: log.child({ mod: "baileys" }),
     // Baileys marca en línea al número. Lo dejamos discreto.
     markOnlineOnConnect: false,
   });
 
-  sock.ev.on("creds.update", saveCreds);
+  // El riesgo de que Meta banee el número es el más concreto del proyecto.
+  // baileys-antiban mete jitter en los envíos, simula tipeo, hace warm-up de
+  // siete días con un número nuevo y auto-pausa cuando detecta señales de ban.
+  const sock = wrapSocket(raw);
 
-  sock.ev.on("connection.update", (update) => {
+  raw.ev.on("creds.update", saveCreds);
+
+  raw.ev.on("connection.update", (update) => {
     const { connection, lastDisconnect, qr } = update;
     if (qr) {
       log.info("Escaneá este QR con el WhatsApp del bot");
@@ -46,7 +52,7 @@ export async function startWhatsApp(
     if (connection === "open") log.info("WhatsApp conectado");
   });
 
-  sock.ev.on("messages.upsert", async ({ messages, type }) => {
+  raw.ev.on("messages.upsert", async ({ messages, type }) => {
     if (type !== "notify") return;
 
     for (const m of messages) {
@@ -81,8 +87,8 @@ export async function startWhatsApp(
         const addressed = addressesBot(
           text,
           ctx?.mentionedJid ?? [],
-          ctx?.participant === sock.user?.id,
-          sock.user?.id,
+          ctx?.participant === raw.user?.id,
+          raw.user?.id,
         );
         if (!addressed) continue;
       }

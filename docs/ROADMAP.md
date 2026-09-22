@@ -24,7 +24,9 @@ El objetivo mínimo y lo que pediste primero.
 - [ ] VPS con Docker, mosquitto con TLS y postgres
 - [ ] Número aparte con WhatsApp activado
 - [ ] `gateway` con Baileys, sesión persistida y whitelist de números
+- [ ] Warm-up de `baileys-antiban` en el número nuevo, siete días antes de usarlo en serio
 - [ ] `agent` en la Pi: conexión MQTT saliente, heartbeat, snapshot por RTSP con ffmpeg
+- [ ] Medir snapshot por DVRIP contra snapshot por ffmpeg y quedarse con el que ande
 - [ ] Subida de la foto al VPS y envío al chat
 - [ ] Comandos fijos: `foto cabania`, `foto frente`
 

@@ -1,4 +1,13 @@
-"""Snapshots por RTSP con ffmpeg."""
+"""Snapshots por RTSP con ffmpeg.
+
+Hay una segunda vía más barata: pedir el frame por el mismo socket DVRIP que ya
+usamos para PTZ, sin levantar ffmpeg. La implementa TheJenos/xmeye-control, y el
+parser de paquetes de video más legible está en kinsi55/node_dvripclient. Ver
+docs/PRIOR_ART.md.
+
+El plan de la fase 1 es medir las dos en tus cámaras y quedarse con la que ande.
+Esta anda en cualquier cámara con RTSP, así que arranca siendo el piso.
+"""
 
 from __future__ import annotations
 

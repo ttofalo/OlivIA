@@ -80,14 +80,16 @@ PREGUNTAS = {
 
 
 def clasificar(repo: dict, url: str, key: str, model: str) -> dict:
+    # Jev tiene 32k de contexto y hay repos con descripciones enormes, así que
+    # el estado va acotado.
     payload = {
         "model": model,
         "state": {
             "objetivo_del_proyecto": OBJETIVO,
-            "repo": repo["full_name"],
-            "descripcion": repo.get("description") or "",
+            "repo": repo["full_name"][:120],
+            "descripcion": (repo.get("description") or "")[:600],
             "lenguaje": repo.get("lang"),
-            "topics": repo.get("topics", []),
+            "topics": (repo.get("topics") or [])[:15],
             "stars": repo.get("stars"),
             "ultimo_push": repo.get("pushed", "")[:10],
         },
@@ -130,7 +132,8 @@ def main() -> None:
     repos = [r for r in json.load(open(args.archivo)) if r.get("stars", 0) >= args.min_stars]
     print(f"{len(repos)} repos a clasificar", file=sys.stderr)
 
-    filas = []
+    filas: list[dict] = []
+    fallidos: list[dict] = []
     for i, repo in enumerate(repos, 1):
         try:
             res = clasificar(repo, url, key, args.model)
@@ -141,7 +144,17 @@ def main() -> None:
                     "El gateway pide tarjeta en la cuenta de Vercel antes de servir "
                     "requests. Agregala y volvé a correr esto."
                 )
-            raise SystemExit(f"{repo['full_name']}: HTTP {e.code} {cuerpo}")
+            if e.code in (401, 403):
+                raise SystemExit(f"La credencial no sirve: HTTP {e.code} {cuerpo}")
+            # Un repo que falla se salta: 149 clasificaciones no se pierden por una.
+            print(f"  [{i}/{len(repos)}] {repo['full_name']}: HTTP {e.code} {cuerpo[:80]}",
+                  file=sys.stderr)
+            fallidos.append({"repo": repo["full_name"], "error": f"HTTP {e.code}"})
+            continue
+        except (urllib.error.URLError, TimeoutError) as e:
+            print(f"  [{i}/{len(repos)}] {repo['full_name']}: red {e}", file=sys.stderr)
+            fallidos.append({"repo": repo["full_name"], "error": str(e)[:80]})
+            continue
 
         a = res["answers"]
         filas.append({
@@ -172,6 +185,8 @@ def main() -> None:
         print(f"{f['repo'][:46]:<46} {f['rol']:<12} {f['esfuerzo']:>4} "
               f"{f['resuelve_lo_dificil']:>8} {f['atado_a_ha']:>5} {f['meses_sin_tocar']:>6}")
     print(f"\nranking.json escrito. {sum(1 for f in filas if f['rol'] == 'descartar')} descartados.")
+    if fallidos:
+        print(f"{len(fallidos)} fallaron: " + ", ".join(f["repo"] for f in fallidos[:6]))
 
 
 if __name__ == "__main__":
