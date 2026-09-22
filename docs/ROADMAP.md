@@ -53,9 +53,12 @@ Salida: "poné la cámara de la cabaña en el portón" y la mueve y te muestra.
 
 ## Fase 4: boyeros
 
-- [ ] Relevar qué tiene cada ESP32 hoy
-- [ ] Firmware con cliente MQTT sobre TLS y credencial por dispositivo
-- [ ] Telemetría periódica de estado
+El backend ya existe: [ttofalo/automatizacion-boyeros-backend](https://github.com/ttofalo/automatizacion-boyeros-backend), con FastAPI, WebSockets y los ESP32 del campo andando contra él. La fase es integrarlo, no reescribirlo. Detalle en [PRIOR_ART.md](PRIOR_ART.md).
+
+- [ ] Leer el backend y mapear qué endpoints expone
+- [ ] Credencial de servicio para OlivIA, aparte del PIN del frontend
+- [ ] Decidir dónde vive el backend: el mismo VPS o donde está hoy
+- [ ] Cliente HTTP en el brain contra `/boyeros`
 - [ ] Consulta de estado desde WhatsApp
 - [ ] Corte y encendido con confirmación obligatoria
 - [ ] Alerta cuando un boyero deja de reportar

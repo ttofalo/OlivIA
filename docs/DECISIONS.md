@@ -37,3 +37,19 @@ Detalle en [JEV.md](JEV.md).
 **2026-09-21.** El bot vive en un grupo con la familia. Si contesta cada mensaje, el grupo queda inservible.
 
 En chat directo responde siempre. En grupo responde cuando la nombran ("olivia, sacá una foto"), cuando la mencionan con arroba o cuando alguien le cita un mensaje suyo. El nombre sale de `WSP_BOT_NAME`, así que si alguien le dice de otra forma se cambia por entorno.
+
+## 007: los boyeros van por HTTP, no por MQTT
+
+**2026-09-21.** El backend de boyeros ya existe y los ESP32 del campo ya hablan con él por HTTP y WebSocket. Reescribir ese canal en MQTT significa tocar firmware que hoy funciona, y ese es el riesgo más caro del proyecto.
+
+OlivIA consume ese backend por HTTP. Queda una asimetría, cámaras por MQTT y boyeros por HTTP, y la aceptamos.
+
+Alternativa descartada: un puente MQTT a HTTP para uniformar. Suma una pieza que se puede caer sin resolver nada.
+
+## 008: no adoptamos Home Assistant
+
+**2026-09-21.** Casi todo el prior art de cámaras XiongMai vive como integración de Home Assistant, así que adoptarlo daría integraciones hechas.
+
+Lo descartamos por el camino crítico: cada foto pasaría por HA, y HA en una Pi con cuatro cámaras es una pieza más entre el pedido y la respuesta. Portamos el código que nos sirve y mantenemos el camino corto.
+
+A reconsiderar en la fase 7, cuando entren luces y portón y el catálogo de integraciones empiece a pesar más que la latencia.

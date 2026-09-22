@@ -62,6 +62,7 @@ El nivel 2 es Claude, y entra cuando Jev duda, cuando la pregunta es abierta o c
 - [docs/JEV.md](docs/JEV.md) — por qué Jev y dónde va cada decisión
 - [docs/ROADMAP.md](docs/ROADMAP.md) — fases, empezando por la foto
 - [docs/SECURITY.md](docs/SECURITY.md) — es la casa de tu familia, leer antes de exponer nada
+- [docs/PRIOR_ART.md](docs/PRIOR_ART.md) — qué reutilizamos de otros proyectos y de dónde
 - [docs/DECISIONS.md](docs/DECISIONS.md) — decisiones tomadas y por qué
 
 ## Estado
