@@ -26,6 +26,24 @@ Esto controla las cámaras y los cercos eléctricos de la casa de tu familia. Un
 | Un familiar corta un boyero por accidente | Confirmación obligatoria y permisos por persona en la fase 6 |
 | El agente de casa queda expuesto | Sin puertos de escucha. Solo cliente MQTT saliente |
 
+## El repo es público
+
+Cualquiera puede leer esto, así que hay cosas que nunca entran:
+
+| Nunca al repo | Dónde va |
+|---|---|
+| Contraseñas de cámaras y del NVR | Variables de entorno de la Pi, referenciadas por `password_env` |
+| IPs y hostname del VPS | `.env`, que está en `.gitignore` |
+| Números de teléfono de la familia | `.env` |
+| API keys de Jev y Claude | `.env` |
+| El `devices.yaml` real | `.gitignore`. Al repo va solo `devices.example.yaml` |
+| Fotos y clips de las cámaras | El volumen `media`, con retención por tiempo |
+| Certificados del broker | `infra/mosquitto/certs/`, ignorado |
+
+Lo que sí queda público es la arquitectura, los puertos que usan las cámaras y las descripciones de ejemplo. Nada de eso le sirve a alguien que no esté ya en tu LAN.
+
+Antes de cada commit vale un `git diff --staged` mirando qué se va. Un `.env` commiteado por accidente queda en el historial aunque lo borres después, y hay que rotar todo lo que tenía.
+
 ## Antes de la fase 1
 
 - [ ] Cambiar las contraseñas de fábrica de las cámaras y el NVR
