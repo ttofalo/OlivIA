@@ -10,6 +10,7 @@ export const config = {
     .map((n) => n.trim())
     .filter(Boolean),
   alertChat: process.env.WSP_ALERT_CHAT ?? "",
+  botName: (process.env.WSP_BOT_NAME ?? "olivia").toLowerCase(),
   authDir: process.env.WSP_AUTH_DIR ?? "./baileys_auth",
   mqtt: {
     host: required("MQTT_HOST"),
@@ -28,4 +29,18 @@ export function numberFromJid(jid: string): string {
 
 export function isAllowed(jid: string): boolean {
   return config.allowedNumbers.includes(numberFromJid(jid));
+}
+
+export function isGroup(jid: string): boolean {
+  return jid.endsWith("@g.us");
+}
+
+/**
+ * En un grupo familiar el bot no puede contestar todo. Responde cuando lo
+ * nombran, la mencionan con arroba o le citan un mensaje suyo.
+ */
+export function addressesBot(text: string, mentions: string[], quotedFromBot: boolean, selfJid?: string): boolean {
+  if (quotedFromBot) return true;
+  if (selfJid && mentions.includes(selfJid)) return true;
+  return text.toLowerCase().includes(config.botName);
 }

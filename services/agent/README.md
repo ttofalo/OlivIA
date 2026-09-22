@@ -15,14 +15,14 @@ Abre la conexión MQTT hacia el VPS y la mantiene. No escucha en ningún puerto,
 
 ```bash
 sudo apt install -y ffmpeg python3-venv
-git clone <este-repo> ~/camaritas && cd ~/camaritas/services/agent
+git clone <este-repo> ~/olivia && cd ~/olivia/services/agent
 python3 -m venv .venv && . .venv/bin/activate
 pip install -e .
 pip install git+https://github.com/OpenIPC/python-dvr
 
 cp ../../.env.example .env   # completar VPS_MQTT_HOST, credenciales y passwords de cámaras
-sudo cp systemd/camaritas-agent.service /etc/systemd/system/
-sudo systemctl enable --now camaritas-agent
+sudo cp systemd/olivia-agent.service /etc/systemd/system/
+sudo systemctl enable --now olivia-agent
 ```
 
 ## Antes de arrancar

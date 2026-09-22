@@ -39,7 +39,7 @@ class Settings:
             mqtt_user=need("MQTT_USER_AGENT"),
             mqtt_pass=need("MQTT_PASS_AGENT"),
             devices_path=Path(os.environ.get("DEVICES_PATH", "../../config/devices.yaml")),
-            snapshot_dir=Path(os.environ.get("SNAPSHOT_DIR", "/tmp/camaritas")),
+            snapshot_dir=Path(os.environ.get("SNAPSHOT_DIR", "/tmp/olivia")),
             upload_url=need("MEDIA_UPLOAD_URL"),
             upload_token=os.environ.get("MEDIA_UPLOAD_TOKEN", ""),
             heartbeat_seconds=int(os.environ.get("HEARTBEAT_SECONDS", "30")),

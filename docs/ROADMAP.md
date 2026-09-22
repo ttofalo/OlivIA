@@ -72,13 +72,28 @@ Salida: preguntás "cómo están los boyeros" y te contesta con el estado de cad
 
 Salida: entra alguien de noche y te llega la foto antes de que golpee la puerta.
 
-## Fase 6: asistente de verdad
+## Fase 6: memoria y conversación
+
+Acá deja de ser un ejecutor de comandos.
 
 - [ ] Claude con tool use sobre todas las capacidades del agente
-- [ ] Contexto por conversación
+- [ ] Contexto por conversación, para que "y ahora la de al lado" tenga sentido
 - [ ] Preguntas sobre el pasado: "¿pasó algo anoche en la cabaña?"
 - [ ] Búsqueda de grabaciones en el NVR por fecha y hora
 - [ ] Permisos por persona: quién puede cortar un boyero y quién solo mirar
+- [ ] Responder con audio, no solo texto
+
+Salida: le preguntás algo abierto y te contesta con lo que sabe de la casa.
+
+## Fase 7: que se adelante
+
+Lo que separa un bot de comandos de un asistente.
+
+- [ ] Presencia: quién está en casa, para decidir si una detección importa
+- [ ] Rutinas por horario y por evento, sin que nadie las dispare
+- [ ] Anomalías: el boyero que consume distinto, la cámara que dejó de reportar
+- [ ] Resumen diario en el grupo familiar
+- [ ] Más dominios: portón, luces, tanques de agua
 
 ## Ideas para después
 

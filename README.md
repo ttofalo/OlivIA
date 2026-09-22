@@ -1,12 +1,24 @@
-# camaritas
+# OlivIA
 
-Asistente de WhatsApp para controlar la casa: cámaras, boyeros eléctricos y lo que vayamos sumando.
+Asistente de casa para la familia, por WhatsApp.
 
-La familia le escribe o le manda un audio, el bot entiende qué le piden y ejecuta. Pedir una foto del portón, mover la cámara de la cabaña a un preset, ver si el boyero del fondo está prendido.
+Le escribís o le mandás un audio y resuelve: una foto del portón, mover la cámara de la cabaña al camino, el estado de los boyeros. Sin abrir una app, sin VPN, sin acordarse de ninguna IP.
+
+## A dónde va
+
+El objetivo es un Jarvis de casa: que OlivIA sepa qué está pasando, que hable en lenguaje natural y que avise sin que le preguntes.
+
+Eso se construye por capas, y cada una funciona sola:
+
+1. **Responde lo que le pedís.** Fotos, movimiento de cámaras, estado de dispositivos.
+2. **Entiende cómo hablás.** Audios, frases sueltas, referencias a medias ("la de la cabañita").
+3. **Sabe qué pasó.** Memoria de eventos, búsqueda en grabaciones, contexto de la conversación.
+4. **Avisa sin que le preguntes.** Triage de detecciones, resúmenes de la mañana, alertas cuando un boyero se cae.
+5. **Controla más cosas.** Portón, luces, tanques de agua, lo que vaya entrando.
+
+La [fase 1](docs/ROADMAP.md) es una foto por WhatsApp. Lo demás se apoya sobre eso.
 
 ## Cómo está partido
-
-Tres servicios y un firmware:
 
 | Componente | Dónde corre | Lenguaje | Qué hace |
 |---|---|---|---|
@@ -36,6 +48,12 @@ El bus entre todo es MQTT sobre TLS, con el broker en el VPS.
 ```
 
 Ningún puerto abierto en el router de casa. Todo sale desde adentro hacia el VPS.
+
+## Los dos cerebros
+
+El nivel 1 es [Jev](docs/JEV.md), un modelo que devuelve decisiones tipadas con probabilidades calibradas en menos de medio segundo. Clasifica cada mensaje contra el inventario real de la casa, así que no puede inventar una cámara que no existe. Resuelve la mayoría de los pedidos sin llamar a un LLM.
+
+El nivel 2 es Claude, y entra cuando Jev duda, cuando la pregunta es abierta o cuando hay que combinar varias acciones.
 
 ## Documentación
 

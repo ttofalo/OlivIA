@@ -9,7 +9,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import qrcode from "qrcode-terminal";
 import pino from "pino";
-import { config, isAllowed } from "./config.js";
+import { addressesBot, config, isAllowed, isGroup } from "./config.js";
 import type { InboundMessage, OutboundMessage } from "./bus.js";
 
 const log = pino({ level: process.env.LOG_LEVEL ?? "info" });
@@ -65,6 +65,27 @@ export async function startWhatsApp(
         m.message?.extendedTextMessage?.text ??
         m.message?.imageMessage?.caption ??
         "";
+
+      if (isGroup(chat)) {
+        // contextInfo cuelga de cada tipo de mensaje, no solo del de texto.
+        const msg = m.message ?? {};
+        const ctx =
+          msg.extendedTextMessage?.contextInfo ??
+          msg.audioMessage?.contextInfo ??
+          msg.imageMessage?.contextInfo ??
+          msg.videoMessage?.contextInfo;
+
+        // Un audio suelto llega con text vacío, así que en grupo hay que
+        // mencionarla o citarla. Cuando haya transcripción (fase 2) se puede
+        // transcribir primero y buscar el nombre ahí.
+        const addressed = addressesBot(
+          text,
+          ctx?.mentionedJid ?? [],
+          ctx?.participant === sock.user?.id,
+          sock.user?.id,
+        );
+        if (!addressed) continue;
+      }
 
       let kind: InboundMessage["kind"] = "text";
       let mediaPath: string | undefined;

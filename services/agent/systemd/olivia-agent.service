@@ -1,0 +1,16 @@
+[Unit]
+Description=OlivIA agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/olivia/services/agent
+EnvironmentFile=/home/pi/olivia/services/agent/.env
+ExecStart=/home/pi/olivia/services/agent/.venv/bin/python -m agent.main
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

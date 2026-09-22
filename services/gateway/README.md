@@ -20,3 +20,7 @@ Es la API de WhatsApp Web sin autorización de Meta. Reglas para no comerse un b
 - No responder a números fuera de la whitelist.
 - Nada de envíos masivos.
 - La versión 7.x todavía está en release candidate. Quedamos en la 6.7.x estable hasta que salga.
+
+## Cómo la llaman
+
+En chat directo responde siempre. En grupo solo cuando la nombran, la mencionan con arroba o le citan un mensaje suyo. El nombre está en `WSP_BOT_NAME` y por defecto es `olivia`.

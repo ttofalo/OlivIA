@@ -31,3 +31,9 @@ Detalle en [JEV.md](JEV.md).
 ## 005: MQTT como bus
 
 **2026-09-21.** Los dispositivos ya hablan MQTT o lo pueden hablar con poco. Funciona sobre conexiones que se cortan, tiene QoS, ACLs por topic y credenciales por dispositivo. Una API HTTP obligaría a que el VPS inicie conexiones hacia casa, que es lo que estamos evitando.
+
+## 006: OlivIA responde por nombre en los grupos
+
+**2026-09-21.** El bot vive en un grupo con la familia. Si contesta cada mensaje, el grupo queda inservible.
+
+En chat directo responde siempre. En grupo responde cuando la nombran ("olivia, sacá una foto"), cuando la mencionan con arroba o cuando alguien le cita un mensaje suyo. El nombre sale de `WSP_BOT_NAME`, así que si alguien le dice de otra forma se cambia por entorno.
