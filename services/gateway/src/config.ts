@@ -20,10 +20,12 @@ export const config = {
   // vinculación (ej: 5493543316750). Si está, se vincula por código en vez de QR.
   botNumber: (process.env.WSP_BOT_NUMBER ?? "").replace(/[^0-9]/g, ""),
   alertChat: process.env.WSP_ALERT_CHAT ?? "",
-  // Foto de perfil y "acerca de" del contacto en WhatsApp. Se suben una sola
-  // vez por sesión vinculada, no en cada reconexión.
+  // Foto de perfil, "acerca de" y nombre del contacto en WhatsApp. Se suben
+  // una sola vez por sesión vinculada, no en cada reconexión. El nombre es lo
+  // que ve alguien que no te tiene agendado.
   avatarPath: process.env.WSP_AVATAR_PATH ?? "./assets/avatar.jpg",
   statusText: process.env.WSP_STATUS_TEXT ?? "Asistente de la casa",
+  profileName: process.env.WSP_PROFILE_NAME ?? "OlivIA Asistente Personal",
   botName: (process.env.WSP_BOT_NAME ?? "olivia").toLowerCase(),
   authDir: process.env.WSP_AUTH_DIR ?? "./baileys_auth",
   mqtt: {

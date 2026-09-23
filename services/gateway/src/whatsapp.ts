@@ -79,10 +79,12 @@ async function setUpProfile(sock: WASocket): Promise<void> {
     const avatar = await readFile(config.avatarPath);
     await sock.updateProfilePicture(jid, avatar);
     await sock.updateProfileStatus(config.statusText);
+    // El nombre que se ve en el chat de alguien que no te tiene agendado.
+    await sock.updateProfileName(config.profileName);
     await writeFile(marker, new Date().toISOString());
-    log.info("Foto de perfil y estado configurados");
+    log.info("Foto de perfil, estado y nombre configurados");
   } catch (err) {
-    log.warn({ err }, "No pude configurar la foto de perfil o el estado");
+    log.warn({ err }, "No pude configurar la foto de perfil, el estado o el nombre");
   }
 }
 
