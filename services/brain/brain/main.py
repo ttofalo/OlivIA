@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import itertools
+import json
 import random
 import threading
 from pathlib import Path
@@ -42,6 +43,11 @@ SIN_RESPUESTA = "La casa no me contesta. Fijate que el agente esté prendido."
 
 NO_ENTENDI = "No te entendí bien. ¿De qué cámara me hablás?"
 
+BIENVENIDA = (
+    "Hola, soy OlivIA. Te muestro las cámaras de la casa, las muevo y te "
+    "aviso si hay alguien. Pedime lo que necesites."
+)
+
 
 class Brain:
     def __init__(self, settings: Settings, inventory: Inventory) -> None:
@@ -64,6 +70,10 @@ class Brain:
         self._lock = threading.Lock()
         self._tokens: dict[str, int] = {}
         self._counter = itertools.count()
+        # Chats que ya recibieron el mensaje de bienvenida, persistido para
+        # que un reinicio no salude de nuevo a quien ya conoce al bot.
+        self._chats_path = self._settings.media_dir / "chats_conocidos.json"
+        self._chats_conocidos: set[str] = self._cargar_chats_conocidos()
 
     def run(self) -> None:
         self._bus.on_message(self._handle)
@@ -80,9 +90,31 @@ class Brain:
         else:
             log.debug("evento sin handler", topic=topic)
 
+    def _cargar_chats_conocidos(self) -> set[str]:
+        try:
+            datos = json.loads(self._chats_path.read_text(encoding="utf-8"))
+            return set(datos)
+        except (OSError, json.JSONDecodeError):
+            return set()
+
+    def _saludar_si_es_nuevo(self, chat: str) -> None:
+        with self._lock:
+            if chat in self._chats_conocidos:
+                return
+            self._chats_conocidos.add(chat)
+            try:
+                self._settings.media_dir.mkdir(parents=True, exist_ok=True)
+                self._chats_path.write_text(
+                    json.dumps(sorted(self._chats_conocidos)), encoding="utf-8"
+                )
+            except OSError:
+                log.exception("no pude guardar los chats conocidos")
+        self._bus.reply(chat, text=BIENVENIDA)
+
     def _handle_inbound(self, msg: dict) -> None:
         chat = msg["chat"]
         texto = msg.get("text", "")
+        self._saludar_si_es_nuevo(chat)
 
         if msg.get("kind") == "audio":
             texto = self._transcribir(chat, msg.get("mediaPath"))
@@ -246,8 +278,9 @@ class Brain:
             self._settings.media_dir.mkdir(parents=True, exist_ok=True)
             image_path = self._settings.media_dir / filename
             image_path.write_bytes(base64.b64decode(payload["image_b64"], validate=True))
-            # Primero la foto sola, sin texto.
-            self._bus.reply(chat, image_path=str(image_path))
+            # Primero la foto, con el nombre de la cámara de pie de foto (no es
+            # el análisis, solo para ubicarse en el chat de un vistazo).
+            self._bus.reply(chat, text=self._inventory.nombre(cam_id), image_path=str(image_path))
             # Después, en un mensaje aparte, el análisis de personas.
             veredicto = self._assistant.check_people(payload["image_b64"], cam_id)
             if veredicto:
@@ -275,7 +308,9 @@ class Brain:
                 self._settings.media_dir.mkdir(parents=True, exist_ok=True)
                 image_path = self._settings.media_dir / filename
                 image_path.write_bytes(base64.b64decode(payload["image_b64"], validate=True))
-                self._bus.reply(chat, image_path=str(image_path))
+                self._bus.reply(
+                    chat, text=self._inventory.nombre(cam_id), image_path=str(image_path)
+                )
                 if texto:
                     self._bus.reply(chat, text=texto)
             else:

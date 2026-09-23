@@ -108,10 +108,12 @@ def test_jev_dudoso_escala_al_llm_y_ejecuta_sus_acciones(armar):
 
     assert llm.textos == ["mostrame atrás"]
     assert bus.published == [("casa/cmd/cam/patio/snapshot", {"chat": "c1"})]
-    # Primero el acuse instantáneo (aleatorio), después la respuesta del LLM.
-    assert bus.replies[0]["chat"] == "c1"
-    assert bus.replies[0]["text"] in main_module.ACKS
-    assert bus.replies[1] == {"chat": "c1", "text": "Ahí va", "image_path": None}
+    # Primero la bienvenida (chat nuevo), después el acuse instantáneo
+    # (aleatorio), después la respuesta del LLM.
+    assert bus.replies[0]["text"] == main_module.BIENVENIDA
+    assert bus.replies[1]["chat"] == "c1"
+    assert bus.replies[1]["text"] in main_module.ACKS
+    assert bus.replies[2] == {"chat": "c1", "text": "Ahí va", "image_path": None}
 
 
 def test_llm_sin_texto_ni_acciones_pide_que_repita(armar):
@@ -132,7 +134,9 @@ def test_ptz_traduce_el_preset_a_numero(armar, inventario):
     brain._handle_inbound({"chat": "c1", "text": "apuntá la entrada al camino", "kind": "text"})
 
     assert bus.published == [("casa/cmd/cam/entrada/ptz", {"preset": 2, "chat": "c1"})]
-    assert bus.replies == []
+    # Sin acuse de texto propio del ptz_preset; solo la bienvenida por ser
+    # chat nuevo.
+    assert bus.replies == [{"chat": "c1", "text": main_module.BIENVENIDA, "image_path": None}]
 
 
 def test_audio_se_transcribe_antes_de_rutear(armar, monkeypatch, tmp_path):
@@ -173,8 +177,9 @@ def test_evento_snapshot_guarda_la_foto_y_la_manda(armar, settings):
 
     guardada = settings.media_dir / "entrada-1.png"
     assert guardada.read_bytes() == foto
-    # Sin visión (fake devuelve None), llega solo la foto, sin mensaje de análisis.
-    assert bus.replies == [{"chat": "c1", "text": None, "image_path": str(guardada)}]
+    # El pie de foto es el nombre de la cámara, no el análisis. Sin visión
+    # (fake devuelve None), no llega un segundo mensaje.
+    assert bus.replies == [{"chat": "c1", "text": "Entrada", "image_path": str(guardada)}]
     assert brain._pending == {}
 
 
@@ -194,6 +199,25 @@ def test_evento_ptz_confirma(armar):
     assert bus.replies[-1]["text"] == "Listo, la moví."
 
 
+def test_evento_ptz_con_foto_lleva_el_nombre_de_pie(armar, settings):
+    brain, bus = armar(RouterFalso(decision("otro", 0.9)))
+    foto = b"\xff\xd8-falso"
+
+    brain._handle_cam_event(
+        "casa/evt/cam/entrada/ptz",
+        {
+            "chat": "c1",
+            "result": "ok",
+            "direction": "right",
+            "image_b64": base64.b64encode(foto).decode(),
+            "filename": "entrada-ptz.jpg",
+        },
+    )
+
+    guardada = settings.media_dir / "entrada-ptz.jpg"
+    assert bus.replies == [{"chat": "c1", "text": "Entrada", "image_path": str(guardada)}]
+
+
 def test_gasto_contesta_con_el_resumen_sin_pasar_por_el_llm(armar, monkeypatch):
     llm = AssistantFalso(Reply(text="no debería llamarme", actions=[]))
     brain, bus = armar(RouterFalso(decision("gasto", 0.95)), llm)
@@ -202,4 +226,32 @@ def test_gasto_contesta_con_el_resumen_sin_pasar_por_el_llm(armar, monkeypatch):
     brain._handle_inbound({"chat": "c1", "text": "cuánto gastamos?", "kind": "text"})
 
     assert llm.textos == []
-    assert bus.replies == [{"chat": "c1", "text": "Hoy: nada gastado.", "image_path": None}]
+    assert bus.replies == [
+        {"chat": "c1", "text": main_module.BIENVENIDA, "image_path": None},
+        {"chat": "c1", "text": "Hoy: nada gastado.", "image_path": None},
+    ]
+
+
+def test_saluda_solo_la_primera_vez_por_chat(armar):
+    brain, bus = armar(RouterFalso(decision("otro", 0.3)))
+
+    brain._handle_inbound({"chat": "c1", "text": "hola", "kind": "text"})
+    brain._handle_inbound({"chat": "c1", "text": "hola de nuevo", "kind": "text"})
+    brain._handle_inbound({"chat": "c2", "text": "hola", "kind": "text"})
+
+    saludos = [r for r in bus.replies if r["text"] == main_module.BIENVENIDA]
+    assert len(saludos) == 2  # una vez por chat, c1 y c2, no de nuevo para c1
+    assert brain._chats_conocidos == {"c1", "c2"}
+
+
+def test_la_bienvenida_persiste_entre_reinicios(armar, settings, inventario, monkeypatch):
+    brain, _ = armar(RouterFalso(decision("otro", 0.3)))
+    brain._handle_inbound({"chat": "c1", "text": "hola", "kind": "text"})
+
+    monkeypatch.setattr(main_module, "Router", RouterFalso(decision("otro", 0.3)))
+    monkeypatch.setattr(main_module.B, "Bus", BusFalso)
+    brain2 = Brain(settings, inventario)
+    brain2._handle_inbound({"chat": "c1", "text": "hola otra vez", "kind": "text"})
+
+    saludos = [r for r in brain2._bus.replies if r["text"] == main_module.BIENVENIDA]
+    assert saludos == []  # ya lo conocía de antes de reiniciar

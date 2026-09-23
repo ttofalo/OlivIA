@@ -18,6 +18,7 @@ snapshots/
 *.jpeg
 *.png
 *.mp4
+!services/gateway/assets/*.jpg
 
 # python
 __pycache__/

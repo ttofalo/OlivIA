@@ -12,7 +12,7 @@ const makeWASocket = ((baileys as unknown as { default?: unknown }).default ??
   baileys) as typeof import("baileys").default;
 import { Boom } from "@hapi/boom";
 import { wrapSocket } from "baileys-antiban";
-import { writeFile } from "node:fs/promises";
+import { access, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import qrcode from "qrcode-terminal";
 import pino from "pino";
@@ -61,6 +61,30 @@ function extractText(content: Record<string, any>): string {
 // abrir sockets en cascada cuando WhatsApp cierra la conexión.
 let pairingAsked = false;
 let reconnecting = false;
+
+// Foto de perfil y "acerca de": se suben una sola vez por sesión vinculada,
+// no en cada reconexión. El marcador vive junto a las credenciales, así que
+// sobrevive un reinicio del gateway pero se vuelve a subir si se re-vincula.
+async function setUpProfile(sock: WASocket): Promise<void> {
+  const marker = join(config.authDir, ".profile-set");
+  try {
+    await access(marker);
+    return; // ya está puesto
+  } catch {
+    // no existe, sigue de largo
+  }
+  try {
+    const jid = sock.user?.id;
+    if (!jid) return;
+    const avatar = await readFile(config.avatarPath);
+    await sock.updateProfilePicture(jid, avatar);
+    await sock.updateProfileStatus(config.statusText);
+    await writeFile(marker, new Date().toISOString());
+    log.info("Foto de perfil y estado configurados");
+  } catch (err) {
+    log.warn({ err }, "No pude configurar la foto de perfil o el estado");
+  }
+}
 
 export async function startWhatsApp(
   onMessage: (msg: InboundMessage) => void,
@@ -136,7 +160,10 @@ export async function startWhatsApp(
         startWhatsApp(onMessage);
       }, 3000);
     }
-    if (connection === "open") log.info("WhatsApp conectado");
+    if (connection === "open") {
+      log.info("WhatsApp conectado");
+      void setUpProfile(raw);
+    }
   });
 
   raw.ev.on("messages.upsert", async ({ messages, type }) => {
@@ -152,6 +179,10 @@ export async function startWhatsApp(
         log.warn({ author }, "Mensaje de un número fuera de la whitelist, descartado");
         continue;
       }
+
+      // El doble tilde azul antes de contestar: da la sensación de que ya lo
+      // vio, no solo que está tipeando.
+      void raw.readMessages([m.key]).catch(() => {});
 
       const content = unwrap(m.message);
       const text = extractText(content);
