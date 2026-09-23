@@ -1,9 +1,15 @@
-import makeWASocket, {
+import baileys, {
   DisconnectReason,
   downloadMediaMessage,
+  fetchLatestBaileysVersion,
   useMultiFileAuthState,
   type WASocket,
-} from "@whiskeysockets/baileys";
+} from "baileys";
+
+// Baileys 6.x es CommonJS: bajo ESM el default llega como el módulo entero, no
+// como la función. Se toma .default si está.
+const makeWASocket = ((baileys as unknown as { default?: unknown }).default ??
+  baileys) as typeof import("baileys").default;
 import { Boom } from "@hapi/boom";
 import { wrapSocket } from "baileys-antiban";
 import { writeFile } from "node:fs/promises";
@@ -15,12 +21,58 @@ import type { InboundMessage, OutboundMessage } from "./bus.js";
 
 const log = pino({ level: process.env.LOG_LEVEL ?? "info" });
 
+// WhatsApp envuelve el mensaje real en capas (efímero, ver una vez, etc.).
+// Hay que desenvolver hasta el contenido para sacar el texto y el tipo.
+type WAMessage = Record<string, any> | null | undefined;
+
+function unwrap(msg: WAMessage): Record<string, any> {
+  let m = msg ?? {};
+  for (let i = 0; i < 5; i++) {
+    const inner =
+      m.ephemeralMessage?.message ??
+      m.viewOnceMessage?.message ??
+      m.viewOnceMessageV2?.message ??
+      m.viewOnceMessageV2Extension?.message ??
+      m.documentWithCaptionMessage?.message ??
+      m.editedMessage?.message ??
+      m.protocolMessage?.editedMessage;
+    if (!inner) break;
+    m = inner;
+  }
+  return m;
+}
+
+function extractText(content: Record<string, any>): string {
+  // Los mensajes de Baileys son objetos protobuf: los campos string ausentes
+  // llegan como "" (default de proto3), no como undefined. Por eso va || y no
+  // ??, para saltear los vacíos y llegar al campo que sí trae el texto.
+  return (
+    content.conversation ||
+    content.extendedTextMessage?.text ||
+    content.imageMessage?.caption ||
+    content.videoMessage?.caption ||
+    content.buttonsResponseMessage?.selectedDisplayText ||
+    content.listResponseMessage?.title ||
+    ""
+  );
+}
+
+// Se piden el código de vinculación y la reconexión una sola vez, para no
+// abrir sockets en cascada cuando WhatsApp cierra la conexión.
+let pairingAsked = false;
+let reconnecting = false;
+
 export async function startWhatsApp(
   onMessage: (msg: InboundMessage) => void,
 ): Promise<WASocket> {
   const { state, saveCreds } = await useMultiFileAuthState(config.authDir);
 
+  // Usar la versión actual de WhatsApp Web. Con una vieja, WhatsApp cierra la
+  // conexión con código 405 y no deja vincular.
+  const { version } = await fetchLatestBaileysVersion();
+
   const raw = makeWASocket({
+    version,
     auth: state,
     logger: log.child({ mod: "baileys" }),
     // Baileys marca en línea al número. Lo dejamos discreto.
@@ -30,7 +82,33 @@ export async function startWhatsApp(
   // El riesgo de que Meta banee el número es el más concreto del proyecto.
   // baileys-antiban mete jitter en los envíos, simula tipeo, hace warm-up de
   // siete días con un número nuevo y auto-pausa cuando detecta señales de ban.
-  const sock = wrapSocket(raw);
+  // baileys-antiban compila sus tipos contra otra versión de Baileys y el
+  // WASocket no coincide. En runtime es el mismo socket con sendMessage
+  // envuelto, así que lo casteamos.
+  // baileys-antiban está compilado contra otra versión de Baileys y envuelve el
+  // socket. Con ANTIBAN=off se usa el socket crudo, para descartarlo cuando la
+  // vinculación falla.
+  const sock =
+    process.env.ANTIBAN === "off"
+      ? raw
+      : (wrapSocket(raw as never) as unknown as WASocket);
+
+  // Vinculación por código: si el número está configurado y todavía no hay
+  // sesión, se pide un código de 8 dígitos y se lo escribe en WhatsApp, en
+  // Dispositivos vinculados > Vincular con número de teléfono. Es más simple que
+  // el QR cuando el gateway corre en un servidor remoto.
+  if (config.botNumber && !state.creds.registered && !pairingAsked) {
+    pairingAsked = true;
+    setTimeout(async () => {
+      try {
+        const code = await raw.requestPairingCode(config.botNumber);
+        log.info(`Código de vinculación de WhatsApp: ${code}`);
+      } catch (err) {
+        pairingAsked = false; // que un próximo intento lo vuelva a pedir
+        log.error({ err }, "No pude pedir el código de vinculación");
+      }
+    }, 3000);
+  }
 
   raw.ev.on("creds.update", saveCreds);
 
@@ -39,6 +117,8 @@ export async function startWhatsApp(
     if (qr) {
       log.info("Escaneá este QR con el WhatsApp del bot");
       qrcode.generate(qr, { small: true });
+      // El string crudo, para regenerar el QR como imagen fuera del contenedor.
+      log.info(`QR_RAW ${qr}`);
     }
     if (connection === "close") {
       const code = (lastDisconnect?.error as Boom)?.output?.statusCode;
@@ -46,8 +126,15 @@ export async function startWhatsApp(
         log.error("La sesión se cerró desde el teléfono. Borrar authDir y vincular de nuevo.");
         return;
       }
-      log.warn({ code }, "Conexión cerrada, reconectando");
-      startWhatsApp(onMessage);
+      // Reconexión con backoff y una sola cadena en vuelo, para no martillar a
+      // WhatsApp (que puede terminar en ban del número).
+      if (reconnecting) return;
+      reconnecting = true;
+      log.warn({ code }, "Conexión cerrada, reconectando en 3s");
+      setTimeout(() => {
+        reconnecting = false;
+        startWhatsApp(onMessage);
+      }, 3000);
     }
     if (connection === "open") log.info("WhatsApp conectado");
   });
@@ -66,20 +153,16 @@ export async function startWhatsApp(
         continue;
       }
 
-      const text =
-        m.message?.conversation ??
-        m.message?.extendedTextMessage?.text ??
-        m.message?.imageMessage?.caption ??
-        "";
+      const content = unwrap(m.message);
+      const text = extractText(content);
 
       if (isGroup(chat)) {
         // contextInfo cuelga de cada tipo de mensaje, no solo del de texto.
-        const msg = m.message ?? {};
         const ctx =
-          msg.extendedTextMessage?.contextInfo ??
-          msg.audioMessage?.contextInfo ??
-          msg.imageMessage?.contextInfo ??
-          msg.videoMessage?.contextInfo;
+          content.extendedTextMessage?.contextInfo ??
+          content.audioMessage?.contextInfo ??
+          content.imageMessage?.contextInfo ??
+          content.videoMessage?.contextInfo;
 
         // Un audio suelto llega con text vacío, así que en grupo hay que
         // mencionarla o citarla. Cuando haya transcripción (fase 2) se puede
@@ -96,13 +179,13 @@ export async function startWhatsApp(
       let kind: InboundMessage["kind"] = "text";
       let mediaPath: string | undefined;
 
-      if (m.message?.audioMessage) {
+      if (content.audioMessage) {
         kind = "audio";
         // TODO: el brain transcribe. Acá solo bajamos el archivo.
         const buf = (await downloadMediaMessage(m, "buffer", {})) as Buffer;
         mediaPath = join(config.mediaDir, `audio-${m.key.id}.ogg`);
         await writeFile(mediaPath, buf);
-      } else if (m.message?.imageMessage) {
+      } else if (content.imageMessage) {
         kind = "image";
         const buf = (await downloadMediaMessage(m, "buffer", {})) as Buffer;
         mediaPath = join(config.mediaDir, `img-${m.key.id}.jpg`);

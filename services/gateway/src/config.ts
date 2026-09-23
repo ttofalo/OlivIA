@@ -4,11 +4,21 @@ function required(name: string): string {
   return v;
 }
 
+// Whitelist vacía o "*" = le responde a cualquiera. Sin filtro por número.
+const allowedRaw = (process.env.WSP_ALLOWED_NUMBERS ?? "").trim();
+const allowAll = allowedRaw === "" || allowedRaw === "*";
+
 export const config = {
-  allowedNumbers: required("WSP_ALLOWED_NUMBERS")
-    .split(",")
-    .map((n) => n.trim())
-    .filter(Boolean),
+  allowedNumbers: allowAll
+    ? []
+    : allowedRaw
+        .split(",")
+        .map((n) => n.trim())
+        .filter(Boolean),
+  allowAll,
+  // Número del bot en formato internacional sin +, para el código de
+  // vinculación (ej: 5493543316750). Si está, se vincula por código en vez de QR.
+  botNumber: (process.env.WSP_BOT_NUMBER ?? "").replace(/[^0-9]/g, ""),
   alertChat: process.env.WSP_ALERT_CHAT ?? "",
   botName: (process.env.WSP_BOT_NAME ?? "olivia").toLowerCase(),
   authDir: process.env.WSP_AUTH_DIR ?? "./baileys_auth",
@@ -18,6 +28,9 @@ export const config = {
     tls: process.env.MQTT_TLS !== "false",
     username: required("MQTT_USER_GATEWAY"),
     password: required("MQTT_PASS_GATEWAY"),
+    // Ruta al ca.crt del broker. El broker usa una CA propia; sin esto la
+    // verificación TLS falla contra el almacén del sistema.
+    caCert: process.env.MQTT_CA_CERT ?? "",
   },
   mediaDir: process.env.MEDIA_DIR ?? "/media",
 };
@@ -28,6 +41,7 @@ export function numberFromJid(jid: string): string {
 }
 
 export function isAllowed(jid: string): boolean {
+  if (config.allowAll) return true;
   return config.allowedNumbers.includes(numberFromJid(jid));
 }
 

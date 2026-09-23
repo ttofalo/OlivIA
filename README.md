@@ -23,7 +23,7 @@ La [fase 1](docs/ROADMAP.md) es una foto por WhatsApp. Lo demás se apoya sobre 
 | Componente | Dónde corre | Lenguaje | Qué hace |
 |---|---|---|---|
 | `services/gateway` | VPS | TypeScript | Habla WhatsApp con Baileys. Recibe mensajes y audios, manda fotos y respuestas. |
-| `services/brain` | VPS | Python | Decide qué hacer con cada mensaje. Jev para los reflejos, Claude para lo que necesita razonar. |
+| `services/brain` | VPS | Python | Decide qué hacer con cada mensaje. Jev para los reflejos, un LLM para lo que necesita razonar. |
 | `services/agent` | Raspberry en casa | Python | Habla con las cámaras y el NVR en la LAN. Se conecta hacia afuera, no recibe conexiones. |
 | `firmware/boyero` | ESP32 | C++ / ESPHome | Mide y controla los boyeros. Publica por MQTT al VPS. |
 
@@ -53,7 +53,7 @@ Ningún puerto abierto en el router de casa. Todo sale desde adentro hacia el VP
 
 El nivel 1 es [Jev](docs/JEV.md), un modelo que devuelve decisiones tipadas con probabilidades calibradas en menos de medio segundo. Clasifica cada mensaje contra el inventario real de la casa, así que no puede inventar una cámara que no existe. Resuelve la mayoría de los pedidos sin llamar a un LLM.
 
-El nivel 2 es Claude, y entra cuando Jev duda, cuando la pregunta es abierta o cuando hay que combinar varias acciones.
+El nivel 2 es un LLM con tool calling, DeepSeek por defecto y cualquier proveedor OpenAI-compatible por configuración (NVIDIA Build, Anthropic). Entra cuando Jev duda, cuando la pregunta es abierta o cuando hay que combinar varias acciones. Solo puede pedir cámaras y presets que estén en el inventario: el brain descarta cualquier otra cosa antes de ejecutar.
 
 ## Documentación
 
@@ -76,4 +76,17 @@ cp .env.example .env          # completar credenciales
 make up                       # levanta gateway, brain, mosquitto y postgres en el VPS
 make qr                       # escanear el QR con el número del bot, una sola vez
 python scripts/discover.py    # correr en la Pi, adentro de la LAN
+```
+
+## Probar sin hardware
+
+Sin la Pi ni las cámaras se puede correr el sistema entero en tu máquina: un mosquitto sin TLS, el brain de verdad, un agente que devuelve una imagen sintética en vez de un frame RTSP, y un chat por terminal en lugar de WhatsApp. Hace falta `TYPESAFE_API_KEY` en `.env`, y `LLM_API_KEY` si querés ver el nivel 2.
+
+```bash
+make venv         # entornos de python y node, una vez
+make test         # tests unitarios de brain, agent y gateway
+make dev-up       # mosquitto en 1883, postgres y el brain
+make dev-agent    # en otra terminal: el agente con cámaras falsas
+make chat         # en otra: escribí "foto de la cabaña" y mirá qué vuelve
+make dev-down
 ```

@@ -7,20 +7,24 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "fmt": "prettier --write src"
+    "fmt": "prettier --write src",
+    "test": "vitest run"
   },
   "dependencies": {
     "@hapi/boom": "^10.0.1",
-    "@whiskeysockets/baileys": "^6.7.23",
+    "baileys": "6.7.24",
     "baileys-antiban": "^4.10.0",
+    "jimp": "^1.6.1",
     "mqtt": "^5.10.1",
     "pino": "^9.5.0",
     "qrcode-terminal": "^0.12.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@types/qrcode-terminal": "^0.12.2",
     "prettier": "^3.4.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^5.0.1"
   }
 }

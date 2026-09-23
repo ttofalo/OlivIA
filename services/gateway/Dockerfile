@@ -1,6 +1,7 @@
 FROM node:22-alpine
 
-RUN apk add --no-cache ffmpeg
+# git: baileys trae libsignal como dependencia desde GitHub.
+RUN apk add --no-cache ffmpeg git
 
 WORKDIR /app
 COPY package*.json ./

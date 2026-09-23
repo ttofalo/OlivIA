@@ -5,7 +5,7 @@ devuelve una decisión tipada con confianza calibrada en 70 a 500 ms, y las
 opciones son las claves del inventario, así que no puede nombrar un dispositivo
 que no existe.
 
-Si la confianza no alcanza el umbral, el brain escala a Claude.
+Si la confianza no alcanza el umbral, el brain escala al LLM de nivel 2.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from typing import Any
 
 from typesafe_sdk import Choice, Noul, Score, TypeSafeClient
 
+from . import costos
 from .config import Inventory, Settings
 
 INTENT_CRITERIA = {
@@ -25,6 +26,7 @@ INTENT_CRITERIA = {
     "boyero_set": "Prender o apagar un boyero eléctrico",
     "estado_general": "Preguntar cómo está todo, un resumen de la casa",
     "historia": "Preguntar por algo que pasó antes, buscar una grabación",
+    "gasto": "Preguntar cuánto gastamos o cuánto saldo queda en la IA, DeepSeek o Jev, tokens o plata",
     "otro": "Charla, saludo, pregunta abierta o algo que no encaja en lo anterior",
 }
 
@@ -62,7 +64,13 @@ class Decision:
         return True
 
     def needs_confirmation(self) -> bool:
-        """Acciones sobre el mundo real piden confirmación por WhatsApp."""
+        """Acciones sobre el mundo real piden confirmación por WhatsApp.
+
+        Mover una cámara o sacar una foto es físico pero inofensivo: nunca pide
+        confirmación. La confirmación es para cortar o prender un boyero.
+        """
+        if self.intent in ("snapshot", "ptz", "preset_save"):
+            return False
         return self.intent == "boyero_set" or self.es_accion_fisica > 0.5
 
 
@@ -106,6 +114,10 @@ class Router:
             },
         )
 
+        costos.anotar(
+            "jev", getattr(response, "model", None), getattr(response, "usage", None), "router"
+        )
+
         a = response.answers
         camara = a["camara"].choice
         boyero = a["boyero"].choice
@@ -126,9 +138,7 @@ class Router:
         )
 
 
-def triage_motion(
-    client: TypeSafeClient, model: str, evento: dict[str, Any]
-) -> tuple[str, float]:
+def triage_motion(client: TypeSafeClient, model: str, evento: dict[str, Any]) -> tuple[str, float]:
     """Nivel 1 para alertas de movimiento.
 
     El NVR tira decenas de eventos por noche y la mayoría es un perro. Jev

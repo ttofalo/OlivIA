@@ -15,6 +15,9 @@ async function main() {
 
   const sock = await startWhatsApp((msg) => {
     log.info({ from: msg.from, kind: msg.kind }, "Mensaje entrante");
+    // "Escribiendo..." al instante, antes de que el brain decida nada: es lo
+    // que hace sentir la respuesta inmediata.
+    void sock.sendPresenceUpdate("composing", msg.chat).catch(() => {});
     publishInbound(bus, msg);
   });
 

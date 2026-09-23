@@ -17,14 +17,13 @@ class Settings:
     mqtt_tls: bool
     mqtt_user: str
     mqtt_pass: str
+    mqtt_ca: str
     devices_path: Path
     snapshot_dir: Path
-    upload_url: str
-    upload_token: str
     heartbeat_seconds: int
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls) -> Settings:
         def need(name: str) -> str:
             v = os.environ.get(name)
             if not v:
@@ -38,10 +37,11 @@ class Settings:
             mqtt_tls=os.environ.get("MQTT_TLS", "true") != "false",
             mqtt_user=need("MQTT_USER_AGENT"),
             mqtt_pass=need("MQTT_PASS_AGENT"),
+            # ca.crt del broker: se copia del VPS a la Pi. Sin esto, la
+            # verificación TLS contra la CA propia del broker falla.
+            mqtt_ca=os.environ.get("MQTT_CA_CERT", ""),
             devices_path=Path(os.environ.get("DEVICES_PATH", "../../config/devices.yaml")),
             snapshot_dir=Path(os.environ.get("SNAPSHOT_DIR", "/tmp/olivia")),
-            upload_url=need("MEDIA_UPLOAD_URL"),
-            upload_token=os.environ.get("MEDIA_UPLOAD_TOKEN", ""),
             heartbeat_seconds=int(os.environ.get("HEARTBEAT_SECONDS", "30")),
         )
 
@@ -59,9 +59,13 @@ class Camera:
     rtsp_port: int
     onvif_port: int | None
     presets: dict[str, int]
+    # La IP la reparte el router y puede cambiar. La MAC no. Si está, el agente
+    # resuelve la IP actual por ARP (ver agent/resolver.py) y `ip` queda como
+    # respaldo. Sin MAC, se usa `ip` tal cual.
+    mac: str | None = None
 
     @classmethod
-    def from_yaml(cls, cam_id: str, d: dict[str, Any]) -> "Camera":
+    def from_yaml(cls, cam_id: str, d: dict[str, Any]) -> Camera:
         puertos = d.get("puertos", {})
         pass_env = d.get("password_env", "")
         return cls(
@@ -78,16 +82,19 @@ class Camera:
             rtsp_port=int(puertos.get("rtsp", 554)),
             onvif_port=int(puertos["onvif"]) if "onvif" in puertos else None,
             presets=d.get("presets", {}),
+            mac=d.get("mac"),
         )
 
-    def rtsp_url(self) -> str:
+    def rtsp_url(self, ip: str | None = None) -> str:
         """URL RTSP del formato que usan las XiongMai.
 
         stream=0 es el principal, stream=1 el secundario. Para un snapshot el
         secundario alcanza y llega más rápido, pero da menos resolución.
+
+        `ip` sobrescribe la del YAML: quien llama pasa la que resolvió por MAC.
         """
         return (
-            f"rtsp://{self.ip}:{self.rtsp_port}/user={self.usuario}"
+            f"rtsp://{ip or self.ip}:{self.rtsp_port}/user={self.usuario}"
             f"&password={self.password}&channel={self.canal}&stream=0.sdp"
         )
 

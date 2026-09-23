@@ -5,16 +5,19 @@ Se conecta al VPS y espera comandos. No escucha en ningún puerto.
 
 from __future__ import annotations
 
+import base64
 import json
+import os
 import ssl
 import threading
 import time
+from collections.abc import Callable
+from pathlib import Path
 
 import paho.mqtt.client as mqtt
-import requests
 import structlog
 
-from . import cameras, snapshot
+from . import cameras, fake, snapshot, vision
 from .config import Camera, Settings, load_cameras
 
 log = structlog.get_logger()
@@ -23,13 +26,21 @@ CMD_CAM = "casa/cmd/cam/+/+"
 
 
 class Agent:
-    def __init__(self, settings: Settings, cams: dict[str, Camera]) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        cams: dict[str, Camera],
+        grab: Callable[[Camera, Path], Path] = snapshot.grab,
+        fake_mode: bool = False,
+    ) -> None:
         self._settings = settings
         self._cams = cams
+        self._grab = grab
+        self._fake_mode = fake_mode
         self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
         self._client.username_pw_set(settings.mqtt_user, settings.mqtt_pass)
         if settings.mqtt_tls:
-            self._client.tls_set(cert_reqs=ssl.CERT_REQUIRED)
+            self._client.tls_set(ca_certs=settings.mqtt_ca or None, cert_reqs=ssl.CERT_REQUIRED)
         self._client.on_connect = self._on_connect
         self._client.on_message = self._on_message
         # Si el agente se cae, el broker avisa por su cuenta.
@@ -74,21 +85,85 @@ class Agent:
 
         try:
             if action == "snapshot":
-                path = snapshot.grab(cam, self._settings.snapshot_dir)
-                remote = self._upload(path)
-                self._emit(cam_id, "snapshot", {"path": remote, "chat": payload.get("chat")})
+                started = time.monotonic()
+                path = self._grab(cam, self._settings.snapshot_dir)
+                image_b64 = base64.b64encode(path.read_bytes()).decode("ascii")
+                info = self._emit(
+                    cam_id,
+                    "snapshot",
+                    {
+                        "chat": payload.get("chat"),
+                        "image_b64": image_b64,
+                        "filename": path.name,
+                        "ms": int((time.monotonic() - started) * 1000),
+                    },
+                )
+                info.wait_for_publish()
+                path.unlink()
 
             elif action == "ptz":
-                if "preset" in payload:
+                chat = payload.get("chat")
+                if self._fake_mode:
+                    log.info("ptz falso", cam=cam_id, payload=payload)
+                    self._emit(cam_id, "ptz", {"ok": True, "chat": chat})
+                elif "preset" in payload:
                     cameras.goto_preset(cam, int(payload["preset"]))
-                else:
-                    cameras.move(
-                        cam,
-                        payload["direction"],
-                        duration=float(payload.get("duration", 0.5)),
-                        speed=int(payload.get("speed", 4)),
+                    data = self._grab_settled(cam)  # espera a que llegue, sin foto a mitad de camino
+                    self._emit(
+                        cam_id,
+                        "ptz",
+                        {
+                            "ok": True,
+                            "result": "ok",
+                            "chat": chat,
+                            "image_b64": base64.b64encode(data).decode("ascii"),
+                            "filename": f"{cam_id}-ptz-{int(time.time())}.jpg",
+                        },
                     )
-                self._emit(cam_id, "ptz", {"ok": True, "chat": payload.get("chat")})
+                else:
+                    direction = payload["direction"]
+                    duration = float(payload.get("duration", 0.6))
+                    speed = float(payload.get("speed", 0.5))
+                    antes = self._grab_bytes(cam)
+                    cameras.move(cam, direction, duration=duration, speed=speed)
+                    despues = self._grab_settled(cam)
+                    result = "ok"
+                    if not vision.changed(antes, despues):
+                        result = "tope"  # el motor no dió más
+                    elif not vision.is_visible(despues):
+                        # Un cuadro tomado con la cámara todavía asentándose sale
+                        # borroso y parece pared. Se confirma con una segunda foto
+                        # antes de decidir retroceder.
+                        despues = self._grab_settled(cam)
+                        if not vision.is_visible(despues):
+                            # Pared confirmada: se vuelve el mismo tramo al revés,
+                            # así la cámara nunca queda apuntando a nada.
+                            cameras.move(
+                                cam, vision.OPPOSITE[direction], duration=duration, speed=speed
+                            )
+                            despues = self._grab_settled(cam)
+                            result = "pared"
+                            # Red de seguridad: si al volver sigue en pared (el
+                            # retroceso a ciegas puede meterla más adentro), va al
+                            # preset "centro", que es una vista conocida.
+                            centro = (cam.presets or {}).get("centro")
+                            if centro is not None and not vision.is_visible(despues):
+                                log.warning("sigue en pared tras volver, voy al centro", cam=cam_id)
+                                cameras.goto_preset(cam, int(centro))
+                                despues = self._grab_settled(cam)
+                    log.info("ptz relativo", cam=cam_id, direction=direction, result=result)
+                    self._emit(
+                        cam_id,
+                        "ptz",
+                        {
+                            "ok": True,
+                            "result": result,
+                            "direction": direction,
+                            "chat": chat,
+                            "image_b64": base64.b64encode(despues).decode("ascii"),
+                            "filename": f"{cam_id}-ptz-{int(time.time())}.jpg",
+                        },
+                    )
 
             else:
                 self._emit(cam_id, action, {"error": f"acción desconocida: {action}"})
@@ -97,20 +172,41 @@ class Agent:
             log.exception("comando falló", cam=cam_id, action=action)
             self._emit(cam_id, action, {"error": str(exc), "chat": payload.get("chat")})
 
-    def _upload(self, path) -> str:
-        """Sube la foto al VPS y devuelve la ruta con la que la ve el gateway."""
-        with path.open("rb") as fh:
-            response = requests.post(
-                self._settings.upload_url,
-                files={"file": (path.name, fh, "image/jpeg")},
-                headers={"Authorization": f"Bearer {self._settings.upload_token}"},
-                timeout=30,
-            )
-        response.raise_for_status()
-        return response.json()["path"]
+    def _grab_settled(self, cam: Camera, max_wait: float = 5.0) -> bytes:
+        """Espera a que la cámara termine de moverse y devuelve el cuadro quieto.
 
-    def _emit(self, cam_id: str, evento: str, payload: dict) -> None:
-        self._client.publish(f"casa/evt/cam/{cam_id}/{evento}", json.dumps(payload), qos=1)
+        Un preset lejano puede tardar varios segundos en llegar; sacar la foto
+        antes da un cuadro a mitad de camino. Se toman fotos hasta que dos
+        seguidas coinciden.
+        """
+        deadline = time.monotonic() + max_wait
+        prev = self._grab_bytes(cam)
+        while time.monotonic() < deadline:
+            time.sleep(0.4)
+            cur = self._grab_bytes(cam)
+            if not vision.changed(prev, cur):
+                return cur
+            prev = cur
+        return prev
+
+    def _grab_bytes(self, cam: Camera) -> bytes:
+        """Saca una foto y devuelve los bytes, sin dejar archivo."""
+        path = self._grab(cam, self._settings.snapshot_dir)
+        try:
+            return path.read_bytes()
+        finally:
+            path.unlink(missing_ok=True)
+
+    def _foto(self, cam: Camera) -> dict:
+        """Campos de foto para adjuntar a un evento (tras un preset, por ejemplo)."""
+        data = self._grab_bytes(cam)
+        return {
+            "image_b64": base64.b64encode(data).decode("ascii"),
+            "filename": f"{cam.id}-ptz-{int(time.time())}.jpg",
+        }
+
+    def _emit(self, cam_id: str, evento: str, payload: dict):
+        return self._client.publish(f"casa/evt/cam/{cam_id}/{evento}", json.dumps(payload), qos=1)
 
 
 def main() -> None:
@@ -118,7 +214,14 @@ def main() -> None:
     cams = load_cameras(settings.devices_path)
     if not cams:
         raise SystemExit("devices.yaml no tiene cámaras. Correr scripts/discover.py primero.")
-    Agent(settings, cams).run()
+    fake_mode = os.environ.get("AGENT_FAKE") == "1"
+    if fake_mode:
+        grab = fake.grab_fake
+    elif os.environ.get("SNAPSHOT_METHOD", "ffmpeg") == "dvrip":
+        grab = snapshot.grab_dvrip  # sin ffmpeg, la cámara arma el JPEG
+    else:
+        grab = snapshot.grab
+    Agent(settings, cams, grab=grab, fake_mode=fake_mode).run()
 
 
 if __name__ == "__main__":

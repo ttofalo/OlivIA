@@ -35,3 +35,9 @@ dist/
 
 # sistema
 .DS_Store
+
+# scripts sueltos
+scripts/node_modules/
+scripts/.ml-profile/
+scripts/out/
+snapshots-prueba/

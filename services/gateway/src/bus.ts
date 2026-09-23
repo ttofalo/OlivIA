@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import mqtt, { type MqttClient } from "mqtt";
 import { config } from "./config.js";
 
@@ -30,11 +31,12 @@ export interface OutboundMessage {
 
 export function connectBus(): MqttClient {
   const proto = config.mqtt.tls ? "mqtts" : "mqtt";
+  const ca = config.mqtt.tls && config.mqtt.caCert ? readFileSync(config.mqtt.caCert) : undefined;
   return mqtt.connect(`${proto}://${config.mqtt.host}:${config.mqtt.port}`, {
     username: config.mqtt.username,
     password: config.mqtt.password,
     reconnectPeriod: 2000,
-    // TODO: apuntar al ca.crt del broker cuando estén los certificados
+    ca,
   });
 }
 

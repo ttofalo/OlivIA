@@ -6,14 +6,17 @@ dependencies = [
     "paho-mqtt>=2.1.0",
     "pyyaml>=6.0",
     "structlog>=24.4.0",
-    "requests>=2.32.0",
-    # DVRIP para las XiongMai / iCSee. No está en PyPI con todo al día:
+    # PTZ y presets por ONVIF: es el único canal de movimiento que responde en
+    # estas XiongMai (el DVRIP no mueve el motor).
+    "onvif-zeep>=0.2.12",
+    # Chequeos de imagen tras un giro (¿se movió? ¿mira la pared?), sin IA.
+    "pillow>=10.0",
+    # DVRIP para los snapshots de las XiongMai / iCSee. No está en PyPI al día:
     # pip install git+https://github.com/OpenIPC/python-dvr
     "python-dvr",
 ]
 
 [project.optional-dependencies]
-onvif = ["onvif-zeep-async>=3.1.0"]
 dev = ["pytest>=8.3.0", "ruff>=0.8.0"]
 
 [tool.ruff]

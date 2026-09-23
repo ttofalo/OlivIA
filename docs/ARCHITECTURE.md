@@ -28,7 +28,7 @@ Recibe el mensaje ya normalizado y decide. Dos niveles:
 
 **Nivel 1, Jev.** Clasifica el mensaje contra el inventario real de dispositivos. Devuelve intent, dispositivo y confianza en 70 a 500 ms. No puede inventar una cámara que no existe porque las opciones son las claves de tu `devices.yaml`. Si la confianza pasa el umbral, ejecuta directo y nunca llama al LLM.
 
-**Nivel 2, Claude.** Entra cuando Jev duda, cuando la pregunta es abierta ("¿pasó algo anoche?") o cuando hay que combinar varias acciones. Acá sí hay tool use y contexto de conversación.
+**Nivel 2, el LLM.** Entra cuando Jev duda, cuando la pregunta es abierta ("¿pasó algo anoche?") o cuando hay que combinar varias acciones. Acá sí hay tool calling y contexto de conversación. El proveedor se elige por configuración (`LLM_BASE_URL`, `LLM_MODEL`); el default es DeepSeek. Las tools declaran como `enum` las cámaras y presets del inventario, y el brain vuelve a validar cada llamada antes de ejecutar.
 
 El brain traduce la decisión a comandos MQTT y espera el resultado.
 
@@ -55,8 +55,8 @@ Tobias manda un audio: "sacame una foto del portón de la cabaña".
 3. El brain arma el estado y le pregunta a Jev: qué intent, qué cámara, hace falta confirmar.
 4. Jev responde `intent=snapshot`, `camara=cabania`, confianza 0.94. Pasa el umbral.
 5. El brain publica `casa/cmd/cam/cabania/snapshot` y espera.
-6. El agente en la Pi levanta el comando, le pide un frame al RTSP de esa cámara con ffmpeg, lo comprime y lo sube al VPS.
-7. El brain publica en `wsp/out` la respuesta con la foto adjunta.
+6. El agente en la Pi levanta el comando, le pide un frame al RTSP de esa cámara con ffmpeg y publica la foto codificada en base64 en el evento MQTT.
+7. El brain decodifica la foto al volumen compartido y publica en `wsp/out` la respuesta con esa ruta adjunta.
 8. El gateway la manda al chat.
 
 Sin LLM en el camino. Latencia dominada por el tiempo que tarda la cámara en dar el primer frame, entre 1 y 3 segundos.
@@ -72,7 +72,7 @@ casa/cmd/cam/<id>/ptz                   mover: {pan, tilt, zoom} o {preset}
 casa/cmd/cam/<id>/preset/save           guardar posición actual como preset
 casa/cmd/boyero/<id>/set                {on|off}
 
-casa/evt/cam/<id>/snapshot              resultado con la referencia al archivo
+casa/evt/cam/<id>/snapshot              resultado: {chat, image_b64, filename, ms}
 casa/evt/cam/<id>/motion                detección del NVR o la cámara
 casa/evt/boyero/<id>/state              estado y medición
 casa/evt/agent/heartbeat                el agente vive

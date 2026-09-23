@@ -9,6 +9,9 @@ camaras:
     descripcion: >
       Cámara de la cabaña de al lado. Apunta al portón y al camino de entrada.
       Es la que movemos seguido.
+    # La IP la reparte el router y puede cambiar. Si se declara la MAC, el agente
+    # resuelve la IP actual por ARP y usa `ip` solo como respaldo.
+    mac: C0-8A-60-8C-7D-6C
     ip: 192.168.1.50
     marca: xiongmai
     puertos:

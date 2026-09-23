@@ -1,0 +1,9 @@
+{
+  "name": "olivia-scripts",
+  "private": true,
+  "type": "module",
+  "description": "Herramientas sueltas. Playwright usa el Chrome instalado, no baja navegadores.",
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  }
+}

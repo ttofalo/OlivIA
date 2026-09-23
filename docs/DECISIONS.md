@@ -53,3 +53,15 @@ Alternativa descartada: un puente MQTT a HTTP para uniformar. Suma una pieza que
 Lo descartamos por el camino crítico: cada foto pasaría por HA, y HA en una Pi con cuatro cámaras es una pieza más entre el pedido y la respuesta. Portamos el código que nos sirve y mantenemos el camino corto.
 
 A reconsiderar en la fase 7, cuando entren luces y portón y el catálogo de integraciones empiece a pesar más que la latencia.
+
+## 009: las fotos viajan por MQTT
+
+**2026-09-22.** El agente publica cada snapshot codificado en base64 dentro del evento MQTT, y el brain lo guarda en el volumen compartido del VPS.
+
+Descartamos un servicio HTTP de upload con token: agregaba otro puerto, credenciales y un certificado sin aportar un canal que MQTT no cubra.
+
+## 010: el LLM de nivel 2 es DeepSeek, por una interfaz OpenAI-compatible
+
+**2026-09-22.** Reemplaza la parte de nivel 2 de la decisión 003. El brain habla con el LLM por la API de chat completions con tools, y el proveedor sale de `LLM_BASE_URL` y `LLM_MODEL`. Default `deepseek-flash`: tool calling, JSON, 1M de contexto, y USD 0.15 a 0.30 por millón de tokens de entrada, con off-peak a la mitad en el horario en que la casa más lo usa.
+
+Descartamos atarnos a un SDK de proveedor: DeepSeek, NVIDIA Build y Anthropic exponen la misma interfaz, y cambiar de modelo tiene que ser editar el `.env`. NVIDIA Build queda para experimentar y para visión sobre las fotos, no como dependencia de producción: el tier gratis comparte unos 40 RPM por key y los límites no están publicados.

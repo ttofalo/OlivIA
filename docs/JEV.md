@@ -72,7 +72,7 @@ response.answers["es_accion_fisica"].noul   # 0.02
 
 ## Dónde lo usamos
 
-**Router de intents.** El caso principal. Cada mensaje de WhatsApp pasa por Jev antes que por cualquier otra cosa. Umbral en 0.80 para ejecutar directo, y por debajo va a Claude.
+**Router de intents.** El caso principal. Cada mensaje de WhatsApp pasa por Jev antes que por cualquier otra cosa. Umbral en 0.80 para ejecutar directo, y por debajo va al LLM de nivel 2.
 
 **Triage de alertas.** El NVR detecta movimiento a cualquier hora y la mayoría es un perro. Jev recibe la hora, la cámara, si hay alguien en casa y el historial reciente, y decide entre avisar ahora, anotar para el resumen de la mañana o descartar. Con 40 eventos por noche, un LLM en ese loop es plata tirada.
 
@@ -82,7 +82,7 @@ response.answers["es_accion_fisica"].noul   # 0.02
 
 ## Dónde no
 
-Redactar la respuesta al usuario, resumir qué pasó anoche, contestar preguntas abiertas, cualquier cosa que necesite memoria de la conversación. Eso es Claude.
+Redactar la respuesta al usuario, resumir qué pasó anoche, contestar preguntas abiertas, cualquier cosa que necesite memoria de la conversación. Eso es el LLM de nivel 2 (DeepSeek por defecto, ver [DECISIONS.md](DECISIONS.md), decisión 010).
 
 ## Costo
 

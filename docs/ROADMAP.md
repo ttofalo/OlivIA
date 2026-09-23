@@ -27,7 +27,7 @@ El objetivo mínimo y lo que pediste primero.
 - [ ] Warm-up de `baileys-antiban` en el número nuevo, siete días antes de usarlo en serio
 - [ ] `agent` en la Pi: conexión MQTT saliente, heartbeat, snapshot por RTSP con ffmpeg
 - [ ] Medir snapshot por DVRIP contra snapshot por ffmpeg y quedarse con el que ande
-- [ ] Subida de la foto al VPS y envío al chat
+- [ ] Foto por MQTT al VPS y envío al chat
 - [ ] Comandos fijos: `foto cabania`, `foto frente`
 
 Salida: mandás "foto cabania" y te llega la imagen.
@@ -35,7 +35,7 @@ Salida: mandás "foto cabania" y te llega la imagen.
 ## Fase 2: entender lo que le decís
 
 - [ ] `brain` con el router de Jev construido desde `devices.yaml`
-- [ ] Umbral de confianza y escalado a Claude cuando Jev duda
+- [ ] Umbral de confianza y escalado al LLM de nivel 2 cuando Jev duda
 - [ ] Transcripción de audios
 - [ ] Registro de cada decisión con confianza y resultado, para calibrar después
 
@@ -81,7 +81,7 @@ Salida: entra alguien de noche y te llega la foto antes de que golpee la puerta.
 
 Acá deja de ser un ejecutor de comandos.
 
-- [ ] Claude con tool use sobre todas las capacidades del agente
+- [ ] LLM de nivel 2 con tool use sobre todas las capacidades del agente
 - [ ] Contexto por conversación, para que "y ahora la de al lado" tenga sentido
 - [ ] Preguntas sobre el pasado: "¿pasó algo anoche en la cabaña?"
 - [ ] Búsqueda de grabaciones en el NVR por fecha y hora

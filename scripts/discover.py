@@ -40,6 +40,7 @@ TIMEOUT = 0.6
 class Host:
     ip: str
     abiertos: list[str] = field(default_factory=list)
+    mac: str = ""
 
     @property
     def tipo(self) -> str:
@@ -91,12 +92,36 @@ def escanear_host(ip: str) -> Host | None:
     return host if host.abiertos else None
 
 
+def tabla_arp() -> dict[str, str]:
+    """IP -> MAC, de lo que el sistema ya tiene en la tabla ARP.
+
+    Sirve para anotar la MAC de cada cámara en el YAML. La MAC no cambia aunque
+    el router reparta otra IP, así que el agente la usa para reencontrarla.
+    """
+    salida: dict[str, str] = {}
+    try:
+        texto = subprocess.run(
+            ["arp", "-an"], capture_output=True, text=True, timeout=5
+        ).stdout
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return salida
+    for ip, mac in re.findall(r"\((\d+\.\d+\.\d+\.\d+)\) at ([0-9a-fA-F:]+)", texto):
+        if mac.lower() != "ff:ff:ff:ff:ff:ff":
+            salida[ip] = ":".join(p.zfill(2) for p in mac.lower().split(":"))
+    return salida
+
+
 def escanear_red(red: ipaddress.IPv4Network, workers: int = 64) -> list[Host]:
     ips = [str(ip) for ip in red.hosts()]
     print(f"Escaneando {red} ({len(ips)} direcciones)...", file=sys.stderr)
     with ThreadPoolExecutor(max_workers=workers) as pool:
         resultados = pool.map(escanear_host, ips)
-    return sorted((h for h in resultados if h), key=lambda h: ipaddress.ip_address(h.ip))
+    hosts = sorted((h for h in resultados if h), key=lambda h: ipaddress.ip_address(h.ip))
+    # Escanear un puerto ya dejó la MAC en la tabla ARP del sistema.
+    arp = tabla_arp()
+    for h in hosts:
+        h.mac = arp.get(h.ip, "")
+    return hosts
 
 
 def imprimir_reporte(hosts: list[Host], redes: list[ipaddress.IPv4Network]) -> None:
@@ -145,6 +170,8 @@ def emitir_yaml(hosts: list[Host]) -> None:
         print(f"  {cid}:")
         print(f"    nombre: TODO")
         print(f"    descripcion: TODO qué se ve desde esta cámara")
+        if h.mac:
+            print(f"    mac: {h.mac}")
         print(f"    ip: {h.ip}")
         print(f"    marca: xiongmai")
         print(f"    puertos:")

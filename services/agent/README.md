@@ -6,7 +6,7 @@ Abre la conexión MQTT hacia el VPS y la mantiene. No escucha en ningún puerto,
 
 ## Qué hace
 
-- Snapshots: le pide un frame al RTSP de la cámara con ffmpeg y lo sube al VPS.
+- Snapshots: le pide un frame al RTSP de la cámara con ffmpeg y lo publica por MQTT.
 - PTZ y presets por DVRIP en el puerto 34567, el mismo protocolo que usa la app iCSee.
 - Heartbeat cada 30 segundos, para que el brain sepa que la casa está en línea.
 - Más adelante, eventos de movimiento del NVR y búsqueda de grabaciones.

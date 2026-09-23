@@ -22,7 +22,7 @@ Esto controla las cámaras y los cercos eléctricos de la casa de tu familia. Un
 | Alguien se mete al VPS y llega a las cámaras | Claves SSH sin password, firewall que solo deja 22 y 8883, fail2ban, sin panel web expuesto |
 | Credenciales en el repo | Todo por variables de entorno. `.env` y `config/devices.yaml` están en `.gitignore` |
 | Fotos de la casa en el disco del VPS | Retención por tiempo y borrado automático. Disco cifrado si el proveedor lo permite |
-| Prompt injection por WhatsApp | Jev no puede devolver algo fuera del enum, así que el nivel 1 es inmune. El nivel 2 con Claude valida los parámetros contra el inventario antes de ejecutar |
+| Prompt injection por WhatsApp | Jev no puede devolver algo fuera del enum, así que el nivel 1 es inmune. El nivel 2 descarta cualquier tool call cuya cámara o preset no esté en el inventario antes de ejecutar |
 | Un familiar corta un boyero por accidente | Confirmación obligatoria y permisos por persona en la fase 6 |
 | El agente de casa queda expuesto | Sin puertos de escucha. Solo cliente MQTT saliente |
 
@@ -35,7 +35,7 @@ Cualquiera puede leer esto, así que hay cosas que nunca entran:
 | Contraseñas de cámaras y del NVR | Variables de entorno de la Pi, referenciadas por `password_env` |
 | IPs y hostname del VPS | `.env`, que está en `.gitignore` |
 | Números de teléfono de la familia | `.env` |
-| API keys de Jev y Claude | `.env` |
+| API keys de Jev y del LLM de nivel 2 | `.env` |
 | El `devices.yaml` real | `.gitignore`. Al repo va solo `devices.example.yaml` |
 | Fotos y clips de las cámaras | El volumen `media`, con retención por tiempo |
 | Certificados del broker | `infra/mosquitto/certs/`, ignorado |

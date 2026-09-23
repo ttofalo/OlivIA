@@ -37,6 +37,8 @@ services:
     volumes:
       # La sesión de WhatsApp vive acá. Si se borra, hay que escanear el QR otra vez.
       - ./services/gateway/baileys_auth:/app/baileys_auth
+      # Solo el ca.crt: el cliente lo necesita para confiar en el broker.
+      - ./infra/mosquitto/certs/ca.crt:/certs/ca.crt:ro
       - media:/media
 
   brain:
@@ -50,6 +52,7 @@ services:
         condition: service_healthy
     volumes:
       - ./config:/app/config:ro
+      - ./infra/mosquitto/certs/ca.crt:/certs/ca.crt:ro
       - media:/media
 
 volumes:
