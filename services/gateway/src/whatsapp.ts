@@ -18,6 +18,7 @@ import qrcode from "qrcode-terminal";
 import pino from "pino";
 import { addressesBot, config, isAllowed, isGroup } from "./config.js";
 import type { InboundMessage, OutboundMessage } from "./bus.js";
+import { notifyTelegram } from "./telegram.js";
 
 const log = pino({ level: process.env.LOG_LEVEL ?? "info" });
 
@@ -61,6 +62,13 @@ function extractText(content: Record<string, any>): string {
 // abrir sockets en cascada cuando WhatsApp cierra la conexión.
 let pairingAsked = false;
 let reconnecting = false;
+
+// Reintentos seguidos sin lograr abrir la conexión, y si ya se avisó de la
+// caída. Un fallo transitorio (uno o dos reintentos) no avisa; una racha
+// sostenida sí, y una sola vez, no en cada reintento.
+let failuresInARow = 0;
+let downtimeNotified = false;
+const NOTIFY_AFTER_FAILURES = 3;
 
 // Foto de perfil y "acerca de": se suben una sola vez por sesión vinculada,
 // no en cada reconexión. El marcador vive junto a las credenciales, así que
@@ -150,13 +158,25 @@ export async function startWhatsApp(
       const code = (lastDisconnect?.error as Boom)?.output?.statusCode;
       if (code === DisconnectReason.loggedOut) {
         log.error("La sesión se cerró desde el teléfono. Borrar authDir y vincular de nuevo.");
+        void notifyTelegram(
+          "OlivIA: la sesión de WhatsApp se cerró desde el teléfono. Hay que " +
+            "escanear el QR de nuevo, no se reconecta sola.",
+        );
         return;
       }
       // Reconexión con backoff y una sola cadena en vuelo, para no martillar a
       // WhatsApp (que puede terminar en ban del número).
       if (reconnecting) return;
       reconnecting = true;
-      log.warn({ code }, "Conexión cerrada, reconectando en 3s");
+      failuresInARow += 1;
+      log.warn({ code, failuresInARow }, "Conexión cerrada, reconectando en 3s");
+      if (failuresInARow >= NOTIFY_AFTER_FAILURES && !downtimeNotified) {
+        downtimeNotified = true;
+        void notifyTelegram(
+          `OlivIA: lleva ${failuresInARow} intentos sin reconectar a WhatsApp. ` +
+            "Puede necesitar un QR nuevo, revisá el servidor.",
+        );
+      }
       setTimeout(() => {
         reconnecting = false;
         startWhatsApp(onMessage);
@@ -164,6 +184,11 @@ export async function startWhatsApp(
     }
     if (connection === "open") {
       log.info("WhatsApp conectado");
+      if (downtimeNotified) {
+        downtimeNotified = false;
+        void notifyTelegram("OlivIA: se reconectó a WhatsApp, ya está andando de nuevo.");
+      }
+      failuresInARow = 0;
       void setUpProfile(raw);
     }
   });

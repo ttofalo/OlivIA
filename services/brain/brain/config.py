@@ -41,6 +41,10 @@ class Settings:
     llm_vision_model: str = "deepseek-flash"
     # Dónde se anota cada llamada a Jev y a DeepSeek con sus tokens y USD.
     costs_path: Path | None = Path("/media/costos.jsonl")
+    # Bot de Telegram para avisos operativos y el reporte diario de gasto.
+    # Sin estas dos variables, no se manda nada.
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -76,6 +80,8 @@ class Settings:
             llm_max_tokens=int(os.environ.get("LLM_MAX_TOKENS", "512")),
             llm_vision_model=os.environ.get("LLM_VISION_MODEL", "deepseek-flash"),
             costs_path=Path(os.environ.get("COSTS_PATH", "/media/costos.jsonl")),
+            telegram_bot_token=os.environ.get("TELEGRAM_BOT_TOKEN", ""),
+            telegram_chat_id=os.environ.get("TELEGRAM_CHAT_ID", ""),
         )
 
 

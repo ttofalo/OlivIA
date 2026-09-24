@@ -26,6 +26,12 @@ export const config = {
   avatarPath: process.env.WSP_AVATAR_PATH ?? "./assets/avatar.jpg",
   statusText: process.env.WSP_STATUS_TEXT ?? "Asistente de la casa",
   profileName: process.env.WSP_PROFILE_NAME ?? "OlivIA Asistente Personal",
+  // Bot de Telegram para avisos operativos (la sesión de WhatsApp se cayó o
+  // volvió). Sin estas dos variables, no manda nada.
+  telegram: {
+    botToken: process.env.TELEGRAM_BOT_TOKEN ?? "",
+    chatId: process.env.TELEGRAM_CHAT_ID ?? "",
+  },
   botName: (process.env.WSP_BOT_NAME ?? "olivia").toLowerCase(),
   authDir: process.env.WSP_AUTH_DIR ?? "./baileys_auth",
   mqtt: {
