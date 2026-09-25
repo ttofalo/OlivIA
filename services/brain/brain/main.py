@@ -43,6 +43,10 @@ ACKS = (
 PENDING_TIMEOUT = 15.0
 SIN_RESPUESTA = "La casa no me contesta. Fijate que el agente esté prendido."
 
+# Whisper local cuando la API de transcripción falla. "base" tarda unos 2 s
+# en la VPS; uno más grande es más preciso pero tarda el triple.
+TRANSCRIBE_FALLBACK_MODEL = "base"
+
 NO_ENTENDI = "No te entendí bien. ¿De qué cámara me hablás?"
 
 # "no me pases foto", "sin foto", "no quiero fotos": Jev lo clasifica como
@@ -150,7 +154,8 @@ class Brain:
         texto = msg.get("text", "")
         self._saludar_si_es_nuevo(chat)
 
-        if msg.get("kind") == "audio":
+        audio = msg.get("kind") == "audio"
+        if audio:
             texto = self._transcribir(chat, msg.get("mediaPath"))
             if texto is None:
                 return
@@ -171,7 +176,7 @@ class Brain:
         # TODO fase 2: persistir la decisión en postgres para calibrar el umbral.
 
         if not decision.confident_enough(self._settings.jev_threshold):
-            self._escalate(chat, texto)
+            self._escalate(chat, texto, audio)
             return
 
         if decision.needs_confirmation():
@@ -179,13 +184,17 @@ class Brain:
             self._bus.reply(chat, "Eso toca algo físico. Todavía no lo tengo habilitado.")
             return
 
-        self._dispatch(chat, texto, decision)
+        self._dispatch(chat, texto, decision, audio)
 
     def _transcribir(self, chat: str, media_path: str | None) -> str | None:
         if not media_path:
             self._bus.reply(chat, "Me llegó un audio vacío.")
             return None
         s = self._settings
+        # Vocabulario para Whisper: sin esto, "Cabaña" sale "campaña".
+        prompt = "OlivIA, cámaras: " + ", ".join(
+            self._inventory.nombre(c) for c in self._inventory.camaras
+        )
         try:
             texto = transcribe(
                 Path(media_path),
@@ -193,22 +202,35 @@ class Brain:
                 s.transcribe_model,
                 s.transcribe_api_base_url,
                 s.transcribe_api_key,
+                prompt=prompt,
             )
         except TranscribeError as exc:
-            log.warning("audio sin transcribir", error=str(exc))
-            self._bus.reply(chat, "No pude entender el audio. ¿Me lo escribís?")
-            return None
+            log.warning("audio sin transcribir", error=str(exc), backend=s.transcribe_backend)
+            texto = None
+            if s.transcribe_backend == "api":
+                # Si la API se cae, Whisper local en la VPS: más lento y menos
+                # preciso, pero el audio no se pierde.
+                try:
+                    texto = transcribe(
+                        Path(media_path), "local", TRANSCRIBE_FALLBACK_MODEL, prompt=prompt
+                    )
+                except TranscribeError as exc_local:
+                    log.warning("audio sin transcribir en local", error=str(exc_local))
+            if texto is None:
+                self._bus.reply(chat, "No pude entender el audio. ¿Me lo escribís?")
+                return None
         log.info("audio transcripto", texto=texto)
         return texto
 
-    def _dispatch(self, chat: str, texto: str, decision: Decision) -> None:
+    def _dispatch(self, chat: str, texto: str, decision: Decision, audio: bool = False) -> None:
         if decision.camara:
             self._last_cam[chat] = decision.camara
         if decision.intent == "snapshot" and decision.camara:
             if NO_QUIERE_FOTO.search(texto):
-                self._escalate(chat, texto)
+                self._escalate(chat, texto, audio)
                 return
-            self._pedir_camaras(chat, {decision.camara: "foto"})
+            modos = {decision.camara: "foto"}
+            self._pedir_camaras(chat, modos, acuse=self._confirmar(modos) if audio else None)
             return
 
         if decision.intent == "gasto":
@@ -218,14 +240,33 @@ class Brain:
         if decision.intent == "ptz" and decision.camara:
             # Jev da la cámara pero no el destino. El LLM tiene los presets
             # como enum y saca el "al portón" del texto.
-            self._escalate(chat, texto)
+            self._escalate(chat, texto, audio)
             return
 
         # Cualquier otra cosa (preguntas abiertas, "qué podés hacer", charla)
         # va al LLM de nivel 2 en vez de una respuesta enlatada.
-        self._escalate(chat, texto)
+        self._escalate(chat, texto, audio)
 
-    def _escalate(self, chat: str, texto: str) -> None:
+    def _confirmar(self, modos: dict[str, str]) -> str:
+        """Acuse de un audio: repite qué entendió, para que quien habló sepa
+        que se entendió bien antes de ver el resultado."""
+
+        def lista(cams: list[str]) -> str:
+            nombres = [self._inventory.nombre(c) for c in cams]
+            return (
+                nombres[0] if len(nombres) == 1 else ", ".join(nombres[:-1]) + " y " + nombres[-1]
+            )
+
+        fotos = [c for c, m in modos.items() if m == "foto"]
+        revisar = [c for c, m in modos.items() if m == "revisar"]
+        partes = []
+        if fotos:
+            partes.append(f"{'Foto' if len(fotos) == 1 else 'Fotos'} de {lista(fotos)}")
+        if revisar:
+            partes.append(f"{'reviso' if partes else 'Reviso'} {lista(revisar)}")
+        return ", ".join(partes) + ", dale."
+
+    def _escalate(self, chat: str, texto: str, audio: bool = False) -> None:
         """Nivel 2: el LLM interpreta lo que Jev no pudo."""
         reply = self._assistant.answer(texto, ultima_camara=self._last_cam.get(chat))
         # Las fotos y revisiones del mismo pedido van juntas en una ronda.
@@ -238,31 +279,42 @@ class Brain:
                 if modos.get(cam) != "revisar":
                     modos[cam] = "foto" if action["kind"] == "snapshot" else "revisar"
             else:
-                self._run_action(chat, action)
+                self._run_action(chat, action, audio)
+        confirmado = audio and any(
+            a["kind"] in ("snapshot", "revisar", "ptz_move", "ptz_preset") for a in reply.actions
+        )
         if modos:
-            # El texto del LLM hace de acuse: así sale uno solo.
-            self._pedir_camaras(chat, modos, acuse=reply.text)
-        elif reply.text:
+            # El texto del LLM hace de acuse: así sale uno solo. Con audio, el
+            # acuse es la confirmación de lo que se entendió.
+            self._pedir_camaras(chat, modos, acuse=self._confirmar(modos) if audio else reply.text)
+        elif reply.text and not confirmado:
             self._bus.reply(chat, reply.text)
         elif not reply.actions:
             self._bus.reply(chat, NO_ENTENDI)
 
-    def _run_action(self, chat: str, action: Action) -> None:
+    def _run_action(self, chat: str, action: Action, audio: bool = False) -> None:
         cam = action["camara"]
         if cam:
             self._last_cam[chat] = cam
         if action["kind"] in ("snapshot", "revisar") and cam:
-            self._pedir_camaras(chat, {cam: "foto" if action["kind"] == "snapshot" else "revisar"})
+            modos = {cam: "foto" if action["kind"] == "snapshot" else "revisar"}
+            self._pedir_camaras(chat, modos, acuse=self._confirmar(modos) if audio else None)
         elif action["kind"] == "ptz_preset" and cam and action["preset"]:
             presets = self._inventory.camaras.get(cam, {}).get("presets") or {}
             numero = presets.get(action["preset"])
             if numero is None:
                 log.warning("preset sin número", cam=cam, preset=action["preset"])
                 return
+            if audio:
+                self._bus.reply(
+                    chat, text=f"{self._inventory.nombre(cam)} al {action['preset']}, dale."
+                )
             self._bus.publish(B.cmd_ptz(cam), {"preset": numero, "chat": chat})
         elif action["kind"] == "ptz_move" and cam and action.get("direction"):
             # Giro corto y acotado; el agente verifica que no quede mirando la pared.
-            self._bus.reply(chat, text=random.choice(ACKS))
+            lado = "derecha" if action["direction"] == "right" else "izquierda"
+            acuse = f"{self._inventory.nombre(cam)} a la {lado}, dale."
+            self._bus.reply(chat, text=acuse if audio else random.choice(ACKS))
             self._bus.publish(
                 B.cmd_ptz(cam),
                 {"direction": action["direction"], "duration": 0.6, "speed": 0.5, "chat": chat},

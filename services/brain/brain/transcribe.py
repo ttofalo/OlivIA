@@ -33,11 +33,14 @@ def _local_model(model: str) -> Any:
         return _models[model]
 
 
-def _transcribe_local(path: Path, model: str, language: str) -> tuple[str, float | None]:
+def _transcribe_local(
+    path: Path, model: str, language: str, prompt: str = ""
+) -> tuple[str, float | None]:
     whisper = _local_model(model)
     segments, info = whisper.transcribe(
         str(path),
         language=language,
+        initial_prompt=prompt or None,
         vad_filter=True,
         beam_size=1,
     )
@@ -46,10 +49,19 @@ def _transcribe_local(path: Path, model: str, language: str) -> tuple[str, float
 
 
 def _multipart_request(
-    path: Path, model: str, language: str, api_base_url: str, api_key: str
+    path: Path, model: str, language: str, api_base_url: str, api_key: str, prompt: str = ""
 ) -> urllib.request.Request:
     boundary = f"----olivia-{uuid.uuid4().hex}"
-    parts = [
+    campos = (
+        [
+            (
+                f'--{boundary}\r\nContent-Disposition: form-data; name="prompt"\r\n\r\n{prompt}\r\n'
+            ).encode()
+        ]
+        if prompt
+        else []
+    )
+    parts = campos + [
         (
             f'--{boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\n{model}\r\n'
         ).encode(),
@@ -71,6 +83,9 @@ def _multipart_request(
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": f"multipart/form-data; boundary={boundary}",
+            # Groq está detrás de Cloudflare, que rechaza con 403 el
+            # User-Agent por defecto de urllib ("Python-urllib").
+            "User-Agent": "olivia-brain/1.0",
         },
         method="POST",
     )
@@ -82,14 +97,14 @@ def _send_request(request: urllib.request.Request) -> bytes:
 
 
 def _transcribe_api(
-    path: Path, model: str, language: str, api_base_url: str, api_key: str
+    path: Path, model: str, language: str, api_base_url: str, api_key: str, prompt: str = ""
 ) -> tuple[str, float | None]:
     if not api_base_url:
         raise TranscribeError("Falta la URL de la API de transcripción")
     if not api_key:
         raise TranscribeError("Falta la clave de la API de transcripción")
 
-    request = _multipart_request(path, model, language, api_base_url, api_key)
+    request = _multipart_request(path, model, language, api_base_url, api_key, prompt)
     payload = json.loads(_send_request(request))
     text = payload.get("text")
     if not isinstance(text, str):
@@ -105,16 +120,21 @@ def transcribe(
     api_base_url: str = "",
     api_key: str = "",
     language: str = "es",
+    prompt: str = "",
 ) -> str:
-    """Transcribe un audio con faster-whisper local o una API compatible."""
+    """Transcribe un audio con faster-whisper local o una API compatible.
+
+    `prompt` le da vocabulario a Whisper (los nombres de las cámaras) para
+    que no escriba "cabaña" como "campaña".
+    """
     started = time.monotonic()
     duration: float | None = None
 
     try:
         if backend == "local":
-            text, duration = _transcribe_local(path, model, language)
+            text, duration = _transcribe_local(path, model, language, prompt)
         elif backend == "api":
-            text, duration = _transcribe_api(path, model, language, api_base_url, api_key)
+            text, duration = _transcribe_api(path, model, language, api_base_url, api_key, prompt)
         else:
             raise TranscribeError(f"Backend de transcripción inválido: {backend}")
     except TranscribeError:

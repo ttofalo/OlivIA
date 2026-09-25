@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import dataclasses
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -375,3 +376,71 @@ def test_la_bienvenida_persiste_entre_reinicios(armar, settings, inventario, mon
 
     saludos = [r for r in brain2._bus.replies if r["text"] == main_module.BIENVENIDA]
     assert saludos == []  # ya lo conocía de antes de reiniciar
+
+
+def test_audio_de_giro_confirma_lo_que_entendio_y_mueve(armar, monkeypatch):
+    llm = AssistantFalso(
+        Reply(
+            text="Listo, la giro.",
+            actions=[
+                {"kind": "ptz_move", "camara": "entrada", "preset": None, "direction": "right"}
+            ],
+        )
+    )
+    brain, bus = armar(RouterFalso(decision("ptz", 0.95, "entrada")), llm)
+    monkeypatch.setattr(
+        main_module, "transcribe", lambda *a, **k: "che moveme la entrada a la derecha"
+    )
+
+    brain._handle_inbound({"chat": "c1", "kind": "audio", "mediaPath": "/a.ogg"})
+
+    # Un solo mensaje: la confirmación. El texto del LLM no se suma.
+    assert [r["text"] for r in bus.replies[1:]] == ["Entrada a la derecha, dale."]
+    assert bus.published[0][1]["direction"] == "right"
+
+
+def test_audio_de_varias_camaras_confirma_todas(armar, monkeypatch):
+    llm = AssistantFalso(
+        Reply(
+            text="Ahí va",
+            actions=[
+                {"kind": "snapshot", "camara": "entrada", "preset": None},
+                {"kind": "revisar", "camara": "patio", "preset": None},
+            ],
+        )
+    )
+    brain, bus = armar(RouterFalso(decision("otro", 0.3)), llm)
+    monkeypatch.setattr(main_module, "transcribe", lambda *a, **k: "foto entrada, revisá patio")
+
+    brain._handle_inbound({"chat": "c1", "kind": "audio", "mediaPath": "/a.ogg"})
+
+    assert bus.replies[-1]["text"] == "Foto de Entrada, reviso Patio, dale."
+
+
+def test_audio_por_jev_confirma_la_foto(armar, monkeypatch):
+    brain, bus = armar(RouterFalso(decision("snapshot", 0.95, "entrada")))
+    monkeypatch.setattr(main_module, "transcribe", lambda *a, **k: "foto de la entrada")
+
+    brain._handle_inbound({"chat": "c1", "kind": "audio", "mediaPath": "/a.ogg"})
+
+    assert bus.replies[-1]["text"] == "Foto de Entrada, dale."
+
+
+def test_si_la_api_de_audio_falla_usa_whisper_local(armar, monkeypatch):
+    router = RouterFalso(decision("snapshot", 0.95, "entrada"))
+    brain, _ = armar(router)
+    brain._settings = dataclasses.replace(brain._settings, transcribe_backend="api")
+    llamadas = []
+
+    def transcribe(path, backend, *a, **k):
+        llamadas.append(backend)
+        if backend == "api":
+            raise main_module.TranscribeError("403")
+        return "foto de la entrada"
+
+    monkeypatch.setattr(main_module, "transcribe", transcribe)
+
+    brain._handle_inbound({"chat": "c1", "kind": "audio", "mediaPath": "/a.ogg"})
+
+    assert llamadas == ["api", "local"]
+    assert router.textos == ["foto de la entrada"]

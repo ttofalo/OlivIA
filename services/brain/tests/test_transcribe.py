@@ -24,7 +24,12 @@ def test_local_carga_el_modelo_una_sola_vez(monkeypatch: pytest.MonkeyPatch) -> 
 
         def transcribe(self, path: str, **kwargs: object):
             assert path.endswith("audio.ogg")
-            assert kwargs == {"language": "es", "vad_filter": True, "beam_size": 1}
+            assert kwargs == {
+                "language": "es",
+                "initial_prompt": None,
+                "vad_filter": True,
+                "beam_size": 1,
+            }
             return [Segment("  hola "), Segment(" mundo  ")], types.SimpleNamespace(duration=1.5)
 
     fake_module = types.ModuleType("faster_whisper")
@@ -86,3 +91,26 @@ def test_error_de_api_se_normaliza(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
             api_base_url="https://api.example/v1",
             api_key="secreta",
         )
+
+
+def test_api_manda_user_agent_propio_y_el_prompt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    audio = tmp_path / "audio.ogg"
+    audio.write_bytes(b"opus")
+    vistos: list[urllib.request.Request] = []
+
+    def fake_send(request: urllib.request.Request) -> bytes:
+        vistos.append(request)
+        return b'{"text": "foto de la cabana"}'
+
+    monkeypatch.setattr(transcribe_module, "_send_request", fake_send)
+
+    transcribe(audio, "api", "m", "https://api.example/v1", "k", prompt="Cabaña, Frente")
+
+    request = vistos[0]
+    # Cloudflare (delante de Groq) rechaza el User-Agent por defecto de urllib.
+    assert "Python-urllib" not in (request.get_header("User-agent") or "Python-urllib")
+    assert request.data is not None
+    assert b'name="prompt"' in request.data
+    assert "Cabaña, Frente".encode() in request.data
