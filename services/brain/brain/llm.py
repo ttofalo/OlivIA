@@ -173,10 +173,10 @@ class Assistant:
             "solo para llamar a las tools.\n\n"
             "Qué podés hacer: sacar una foto de una cámara (sacar_foto), mover una "
             "cámara a un punto guardado, los presets del inventario (mover_camara), "
-            "y girarla un poco a la izquierda o la derecha (girar_camara), y decir "
-            "cuánto gastamos en IA, tokens o saldo (consultar_gasto). Si te "
-            "piden eso, "
-            "usá la tool, no contestes con texto. Lo que todavía no anda: boyeros, "
+            "y girarla un poco a la izquierda o la derecha (girar_camara). Si "
+            "preguntan cuánto gastamos en IA o el saldo, usá consultar_gasto: ese "
+            "dato se manda por Telegram, no lo digas vos ni inventes un número. "
+            "Lo que todavía no anda: boyeros, "
             "temperatura de la pileta, avisos solos; si preguntan, decilo en una "
             "frase, sin vueltas. No inventes cámaras ni presets. Inventario:\n\n"
             f"{self._inventory_text()}"
@@ -268,8 +268,9 @@ class Assistant:
                 "function": {
                     "name": "consultar_gasto",
                     "description": (
-                        "Cuánto se gastó en IA (DeepSeek y Jev): llamadas, tokens, USD "
-                        "de hoy y del mes, y el saldo que queda."
+                        "Cuánto se gastó en IA (DeepSeek y Jev), tokens y USD. El dato "
+                        "no se manda por acá, se manda por Telegram: la tool solo avisa "
+                        "eso, no des vos el número ni digas cuánto es."
                     ),
                     "parameters": {
                         "type": "object",

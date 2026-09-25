@@ -218,18 +218,31 @@ def test_evento_ptz_con_foto_lleva_el_nombre_de_pie(armar, settings):
     assert bus.replies == [{"chat": "c1", "text": "Entrada", "image_path": str(guardada)}]
 
 
-def test_gasto_contesta_con_el_resumen_sin_pasar_por_el_llm(armar, monkeypatch):
+def test_gasto_no_se_contesta_por_whatsapp_se_manda_a_telegram(armar, monkeypatch):
     llm = AssistantFalso(Reply(text="no debería llamarme", actions=[]))
     brain, bus = armar(RouterFalso(decision("gasto", 0.95)), llm)
     monkeypatch.setattr(main_module.costos, "resumen_texto", lambda: "Hoy: nada gastado.")
+    enviados = []
+    monkeypatch.setattr(
+        main_module.T,
+        "notificar",
+        lambda texto, token, chat_id: enviados.append((texto, token, chat_id)) or True,
+    )
 
     brain._handle_inbound({"chat": "c1", "text": "cuánto gastamos?", "kind": "text"})
 
     assert llm.textos == []
+    # Por WhatsApp no se da el dato, solo se avisa que llega por otro lado.
     assert bus.replies == [
         {"chat": "c1", "text": main_module.BIENVENIDA, "image_path": None},
-        {"chat": "c1", "text": "Hoy: nada gastado.", "image_path": None},
+        {
+            "chat": "c1",
+            "text": "Ese dato te lo paso por Telegram, ahí lo tenés.",
+            "image_path": None,
+        },
     ]
+    # El dato real sí sale, pero por Telegram.
+    assert enviados == [("Hoy: nada gastado.", "", "")]
 
 
 def test_saluda_solo_la_primera_vez_por_chat(armar):

@@ -18,6 +18,7 @@ import structlog
 
 from . import bus as B
 from . import costos
+from . import telegram as T
 from .config import Inventory, Settings
 from .llm import Action, Assistant
 from .router import Decision, Router
@@ -79,8 +80,23 @@ class Brain:
         self._bus.on_message(self._handle)
         self._bus.connect()
         self._bus.subscribe(B.TOPIC_IN, B.EVT_CAM, B.EVT_BOYERO, B.EVT_AGENT)
+        self._iniciar_escucha_telegram()
         log.info("brain arriba", threshold=self._settings.jev_threshold)
         self._bus.loop_forever()
+
+    def _iniciar_escucha_telegram(self) -> None:
+        # El gasto se consulta por Telegram, no por WhatsApp. Sin credenciales
+        # configuradas, no hay nada que escuchar.
+        s = self._settings
+        if not s.telegram_bot_token or not s.telegram_chat_id:
+            return
+        hilo = threading.Thread(
+            target=T.escuchar,
+            args=(s.telegram_bot_token, s.telegram_chat_id, lambda _texto: self._resumen_gasto()),
+            daemon=True,
+            name="telegram-gasto",
+        )
+        hilo.start()
 
     def _handle(self, topic: str, payload: dict) -> None:
         if topic == B.TOPIC_IN:
@@ -224,13 +240,25 @@ class Brain:
             # TODO fase 4: heartbeat del agente y estado de los boyeros.
             self._bus.reply(chat, "El estado de la casa llega en la fase 4.")
 
-    def _gasto(self, chat: str) -> None:
+    def _resumen_gasto(self) -> str:
         """Tokens y USD de Jev y DeepSeek, y el saldo que queda en DeepSeek."""
         texto = costos.resumen_texto()
         saldo = costos.saldo_deepseek(self._settings.llm_base_url, self._settings.llm_api_key)
         if saldo is not None:
             texto += f" En DeepSeek quedan USD {saldo}."
-        self._bus.reply(chat, text=texto)
+        return texto
+
+    def _gasto(self, chat: str) -> None:
+        # El gasto se consulta por Telegram, no por WhatsApp: es un dato de
+        # la operación de la casa, no algo para un chat familiar. Igual se
+        # manda a Telegram en el momento, para no dejar a quien preguntó sin
+        # el dato en ningún lado.
+        self._bus.reply(chat, text="Ese dato te lo paso por Telegram, ahí lo tenés.")
+        T.notificar(
+            self._resumen_gasto(),
+            self._settings.telegram_bot_token,
+            self._settings.telegram_chat_id,
+        )
 
     def _snapshot(self, chat: str, cam: str) -> None:
         # Acuse casi instantáneo, antes de pedirle la foto a la cámara: le avisa
