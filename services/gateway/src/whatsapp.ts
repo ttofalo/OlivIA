@@ -265,7 +265,7 @@ export async function startWhatsApp(
   return sock;
 }
 
-export async function send(sock: WASocket, out: OutboundMessage): Promise<void> {
+async function sendOnce(sock: WASocket, out: OutboundMessage): Promise<void> {
   if (out.imagePath) {
     await sock.sendMessage(out.chat, {
       image: { url: out.imagePath },
@@ -276,4 +276,28 @@ export async function send(sock: WASocket, out: OutboundMessage): Promise<void> 
   if (out.text) {
     await sock.sendMessage(out.chat, { text: out.text });
   }
+}
+
+// La conexión tiene microcortes cada tanto (unos segundos, se reconecta sola).
+// Si el envío pega justo en esa ventana, falla una vez y se pierde la
+// respuesta para siempre si no se reintenta. Con estos reintentos, el segundo o
+// tercer intento ya encuentra la conexión repuesta.
+const SEND_RETRIES = 3;
+const SEND_RETRY_DELAY_MS = 2500;
+
+export async function send(sock: WASocket, out: OutboundMessage): Promise<void> {
+  let lastErr: unknown;
+  for (let intento = 1; intento <= SEND_RETRIES; intento++) {
+    try {
+      await sendOnce(sock, out);
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (intento < SEND_RETRIES) {
+        log.warn({ err, intento }, "No se pudo enviar, reintentando");
+        await new Promise((r) => setTimeout(r, SEND_RETRY_DELAY_MS));
+      }
+    }
+  }
+  throw lastErr;
 }
