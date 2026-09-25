@@ -8,10 +8,11 @@ Lo que falta está marcado con TODO y tiene su fase en docs/ROADMAP.md.
 from __future__ import annotations
 
 import base64
-import itertools
 import json
 import random
+import re
 import threading
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import structlog
@@ -44,6 +45,26 @@ SIN_RESPUESTA = "La casa no me contesta. Fijate que el agente esté prendido."
 
 NO_ENTENDI = "No te entendí bien. ¿De qué cámara me hablás?"
 
+# "no me pases foto", "sin foto", "no quiero fotos": Jev lo clasifica como
+# snapshot igual, así que el brain lo manda al LLM, que sabe revisar sin foto.
+NO_QUIERE_FOTO = re.compile(r"\b(no|sin)\b[^.?!]{0,25}\bfotos?\b", re.IGNORECASE)
+
+
+@dataclass(eq=False)
+class Ronda:
+    """Las cámaras de un mismo pedido. Un acuse al empezar y un solo mensaje
+    con el resultado de todas al terminar, en vez de uno por cámara."""
+
+    chat: str
+    # cámara -> "foto" (manda la imagen) o "revisar" (solo el análisis)
+    modos: dict[str, str]
+    resultados: dict[str, str | None] = field(default_factory=dict)
+    # Cámaras cuya foto ya llegó y se está analizando: el timeout no las toca.
+    en_proceso: set[str] = field(default_factory=set)
+    sin_respuesta: set[str] = field(default_factory=set)
+    cerrada: bool = False
+
+
 BIENVENIDA = (
     "Hola, soy OlivIA. Te muestro las cámaras de la casa, las muevo y te "
     "aviso si hay alguien. Pedime lo que necesites."
@@ -61,16 +82,13 @@ class Brain:
         # Que ningún id interno (cabania) llegue al chat: el bus lo cambia por
         # el nombre (Cabaña) en todo texto saliente.
         self._bus.set_nombres({cid: inventory.nombre(cid) for cid in inventory.camaras})
-        # Qué chat espera el resultado de cada comando en vuelo.
-        self._pending: dict[str, str] = {}
+        # Qué ronda espera la foto de cada cámara en vuelo.
+        self._pending: dict[str, Ronda] = {}
         # Última cámara usada por chat, para que "movela a la derecha" sin
         # nombrar cámara se entienda.
         self._last_cam: dict[str, str] = {}
-        # Los handlers corren en hilos del pool: el estado en vuelo va con lock,
-        # y cada pedido lleva un token para que el timeout no pise uno nuevo.
+        # Los handlers corren en hilos del pool: el estado en vuelo va con lock.
         self._lock = threading.Lock()
-        self._tokens: dict[str, int] = {}
-        self._counter = itertools.count()
         # Chats que ya recibieron el mensaje de bienvenida, persistido para
         # que un reinicio no salude de nuevo a quien ya conoce al bot.
         self._chats_path = self._settings.media_dir / "chats_conocidos.json"
@@ -187,7 +205,10 @@ class Brain:
         if decision.camara:
             self._last_cam[chat] = decision.camara
         if decision.intent == "snapshot" and decision.camara:
-            self._snapshot(chat, decision.camara)
+            if NO_QUIERE_FOTO.search(texto):
+                self._escalate(chat, texto)
+                return
+            self._pedir_camaras(chat, {decision.camara: "foto"})
             return
 
         if decision.intent == "gasto":
@@ -207,9 +228,21 @@ class Brain:
     def _escalate(self, chat: str, texto: str) -> None:
         """Nivel 2: el LLM interpreta lo que Jev no pudo."""
         reply = self._assistant.answer(texto, ultima_camara=self._last_cam.get(chat))
+        # Las fotos y revisiones del mismo pedido van juntas en una ronda.
+        modos: dict[str, str] = {}
         for action in reply.actions:
-            self._run_action(chat, action)
-        if reply.text:
+            cam = action["camara"]
+            if action["kind"] in ("snapshot", "revisar") and cam:
+                self._last_cam[chat] = cam
+                # Si pidió la misma cámara con foto y sin foto, gana sin foto.
+                if modos.get(cam) != "revisar":
+                    modos[cam] = "foto" if action["kind"] == "snapshot" else "revisar"
+            else:
+                self._run_action(chat, action)
+        if modos:
+            # El texto del LLM hace de acuse: así sale uno solo.
+            self._pedir_camaras(chat, modos, acuse=reply.text)
+        elif reply.text:
             self._bus.reply(chat, reply.text)
         elif not reply.actions:
             self._bus.reply(chat, NO_ENTENDI)
@@ -218,8 +251,8 @@ class Brain:
         cam = action["camara"]
         if cam:
             self._last_cam[chat] = cam
-        if action["kind"] == "snapshot" and cam:
-            self._snapshot(chat, cam)
+        if action["kind"] in ("snapshot", "revisar") and cam:
+            self._pedir_camaras(chat, {cam: "foto" if action["kind"] == "snapshot" else "revisar"})
         elif action["kind"] == "ptz_preset" and cam and action["preset"]:
             presets = self._inventory.camaras.get(cam, {}).get("presets") or {}
             numero = presets.get(action["preset"])
@@ -260,59 +293,111 @@ class Brain:
             self._settings.telegram_chat_id,
         )
 
-    def _snapshot(self, chat: str, cam: str) -> None:
-        # Acuse casi instantáneo, antes de pedirle la foto a la cámara: le avisa
-        # al usuario que ya está trabajando.
-        self._bus.reply(chat, text=random.choice(ACKS))
-        token = next(self._counter)
+    def _pedir_camaras(self, chat: str, modos: dict[str, str], acuse: str | None = None) -> None:
+        # Acuse casi instantáneo, antes de pedirle la foto a las cámaras: le
+        # avisa al usuario que ya está trabajando. Uno por pedido, no por cámara.
+        self._bus.reply(chat, text=acuse or random.choice(ACKS))
+        ronda = Ronda(chat=chat, modos=dict(modos))
         with self._lock:
-            self._pending[cam] = chat
-            self._tokens[cam] = token
-        self._bus.publish(B.cmd_snapshot(cam), {"chat": chat})
-        timer = threading.Timer(PENDING_TIMEOUT, self._pending_expired, args=(cam, chat, token))
+            for cam in ronda.modos:
+                self._pending[cam] = ronda
+        for cam in ronda.modos:
+            self._bus.publish(B.cmd_snapshot(cam), {"chat": chat})
+        timer = threading.Timer(PENDING_TIMEOUT, self._ronda_vencida, args=(ronda,))
         timer.daemon = True
         timer.start()
 
-    def _pending_expired(self, cam: str, chat: str, token: int) -> None:
-        """Se dispara si la foto no volvió a tiempo. Avisa solo si sigue pendiente."""
+    def _ronda_vencida(self, ronda: Ronda) -> None:
+        """Las cámaras que no mandaron la foto a tiempo cuentan como sin respuesta."""
         with self._lock:
-            if self._tokens.get(cam) != token:
-                return  # ya se resolvió, o llegó otro pedido más nuevo
-            self._pending.pop(cam, None)
-            self._tokens.pop(cam, None)
-        log.warning("snapshot sin respuesta del agente", cam=cam)
-        self._bus.reply(chat, text=SIN_RESPUESTA)
+            for cam in ronda.modos:
+                if cam in ronda.resultados or cam in ronda.en_proceso:
+                    continue
+                if self._pending.get(cam) is ronda:
+                    del self._pending[cam]
+                ronda.resultados[cam] = None
+                ronda.sin_respuesta.add(cam)
+                log.warning("snapshot sin respuesta del agente", cam=cam)
+        self._cerrar_si_completa(ronda)
+
+    def _anotar(self, ronda: Ronda, cam: str, linea: str | None) -> None:
+        with self._lock:
+            ronda.resultados[cam] = linea
+            ronda.en_proceso.discard(cam)
+        self._cerrar_si_completa(ronda)
+
+    def _cerrar_si_completa(self, ronda: Ronda) -> None:
+        with self._lock:
+            if ronda.cerrada or len(ronda.resultados) < len(ronda.modos):
+                return
+            ronda.cerrada = True
+        if ronda.sin_respuesta == set(ronda.modos):
+            self._bus.reply(ronda.chat, text=SIN_RESPUESTA)
+            return
+        lineas = []
+        for cam in ronda.modos:
+            if cam in ronda.sin_respuesta:
+                lineas.append(f"{self._inventory.nombre(cam)}: no me contestó.")
+            elif ronda.resultados[cam]:
+                lineas.append(ronda.resultados[cam])
+        if lineas:
+            self._bus.reply(ronda.chat, text="\n".join(lineas))
+
+    def _resultado_snapshot(self, ronda: Ronda, cam: str, payload: dict) -> None:
+        nombre = self._inventory.nombre(cam)
+        modo = ronda.modos[cam]
+        # Una sola foto pedida: los textos de siempre, sin el nombre adelante.
+        sola = len(ronda.modos) == 1 and modo == "foto"
+
+        if payload.get("error") or "image_b64" not in payload:
+            if sola:
+                linea = (
+                    f"No pude sacar la foto: {payload['error']}"
+                    if payload.get("error")
+                    else "El agente no mandó la foto."
+                )
+            else:
+                motivo = str(payload.get("error") or "el agente no mandó la foto")
+                linea = f"{nombre}: no la pude ver ({motivo.removeprefix(f'{cam}: ')})."
+            self._anotar(ronda, cam, linea)
+            return
+
+        if modo == "foto":
+            # La foto viene en el evento (decisión 009) y se guarda en el
+            # volumen que comparte con el gateway. Sale apenas llega, con el
+            # nombre de la cámara de pie de foto.
+            filename = Path(payload["filename"]).name
+            self._settings.media_dir.mkdir(parents=True, exist_ok=True)
+            image_path = self._settings.media_dir / filename
+            image_path.write_bytes(base64.b64decode(payload["image_b64"], validate=True))
+            self._bus.reply(chat=ronda.chat, text=nombre, image_path=str(image_path))
+
+        # El análisis de personas va en el mensaje único del final.
+        veredicto = self._assistant.check_people(payload["image_b64"], cam)
+        if sola:
+            linea = veredicto
+        elif veredicto:
+            linea = f"{nombre}: {veredicto}"
+        elif modo == "revisar":
+            linea = f"{nombre}: no la pude analizar."
+        else:
+            linea = None
+        self._anotar(ronda, cam, linea)
 
     def _handle_cam_event(self, topic: str, payload: dict) -> None:
         _, _, _, cam_id, evento = topic.split("/", 4)
 
         if evento == "snapshot":
             with self._lock:
-                pendiente = self._pending.pop(cam_id, None)
-                self._tokens.pop(cam_id, None)  # llegó: el timeout ya no aplica
-            chat = payload.get("chat") or pendiente
-            if not chat:
-                log.warning("snapshot sin destinatario", cam=cam_id)
+                ronda = self._pending.pop(cam_id, None)
+                if ronda is not None:
+                    ronda.en_proceso.add(cam_id)
+            if ronda is None:
+                # Llegó tarde o nadie la pidió: no se manda, porque puede ser
+                # de una revisión donde dijeron que no querían foto.
+                log.warning("snapshot sin pedido en curso", cam=cam_id)
                 return
-            if payload.get("error"):
-                self._bus.reply(chat, f"No pude sacar la foto: {payload['error']}")
-                return
-            if "image_b64" not in payload:
-                self._bus.reply(chat, "El agente no mandó la foto.")
-                return
-            # La foto viene en el evento (decisión 009) y se guarda en el
-            # volumen que comparte con el gateway.
-            filename = Path(payload["filename"]).name
-            self._settings.media_dir.mkdir(parents=True, exist_ok=True)
-            image_path = self._settings.media_dir / filename
-            image_path.write_bytes(base64.b64decode(payload["image_b64"], validate=True))
-            # Primero la foto, con el nombre de la cámara de pie de foto (no es
-            # el análisis, solo para ubicarse en el chat de un vistazo).
-            self._bus.reply(chat, text=self._inventory.nombre(cam_id), image_path=str(image_path))
-            # Después, en un mensaje aparte, el análisis de personas.
-            veredicto = self._assistant.check_people(payload["image_b64"], cam_id)
-            if veredicto:
-                self._bus.reply(chat, text=veredicto)
+            self._resultado_snapshot(ronda, cam_id, payload)
 
         elif evento == "ptz":
             chat = payload.get("chat")

@@ -19,7 +19,7 @@ NOT_CONFIGURED_TEXT = "El nivel 2 no está configurado. Falta LLM_API_KEY."
 
 
 class Action(TypedDict):
-    kind: Literal["snapshot", "ptz_preset", "ptz_move", "estado", "gasto"]
+    kind: Literal["snapshot", "revisar", "ptz_preset", "ptz_move", "estado", "gasto"]
     camara: str | None
     preset: str | None
     direction: NotRequired[str | None]  # solo ptz_move: "left" | "right"
@@ -171,9 +171,15 @@ class Assistant:
             "- A las cámaras las nombrás con su nombre de persona (Cabaña, Frente, "
             "Cochera, Fondo), nunca con el id interno como 'cabania'. Los ids son "
             "solo para llamar a las tools.\n\n"
-            "Qué podés hacer: sacar una foto de una cámara (sacar_foto), mover una "
+            "Qué podés hacer: sacar una foto de una cámara (sacar_foto), mirar "
+            "cámaras y decir si hay alguien sin mandar la foto (revisar_camaras), "
+            "mover una "
             "cámara a un punto guardado, los presets del inventario (mover_camara), "
             "y girarla un poco a la izquierda o la derecha (girar_camara). Si "
+            "dicen que no quieren foto, o piden revisar, chequear o si hay alguien "
+            "sin pedir la foto, usá revisar_camaras y nunca sacar_foto: si dicen "
+            "que no, es no. Si piden varias cámaras, pedilas todas en la misma "
+            "respuesta. Si "
             "preguntan cuánto gastamos en IA o el saldo, usá consultar_gasto: ese "
             "dato se manda por Telegram, no lo digas vos ni inventes un número. "
             "Lo que todavía no anda: boyeros, "
@@ -224,6 +230,29 @@ class Assistant:
                         "type": "object",
                         "properties": {"camara": {"type": "string", "enum": camaras}},
                         "required": ["camara"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "revisar_camaras",
+                    "description": (
+                        "Mira una o varias cámaras y dice si hay personas, SIN mandar "
+                        "la foto. Para 'revisá que no haya nadie', 'todo ok?', 'no me "
+                        "pases foto'. Para todas, pasá todas."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "camaras": {
+                                "type": "array",
+                                "items": {"type": "string", "enum": camaras},
+                                "minItems": 1,
+                            }
+                        },
+                        "required": ["camaras"],
                         "additionalProperties": False,
                     },
                 },
@@ -312,9 +341,26 @@ class Assistant:
                 log.warning("tool call descartada", tool=name, motivo="argumentos inválidos")
                 continue
 
+            if name == "revisar_camaras":
+                actions.extend(self._revisar(arguments))
+                continue
             action = self._action(name, arguments)
             if action is not None:
                 actions.append(action)
+        return actions
+
+    def _revisar(self, arguments: dict) -> list[Action]:
+        """Una acción por cámara: el brain las junta en una sola respuesta."""
+        camaras = arguments.get("camaras")
+        if not isinstance(camaras, list):
+            self._log_invalid("revisar_camaras", camaras=camaras)
+            return []
+        actions: list[Action] = []
+        for camara in dict.fromkeys(camaras):
+            if not isinstance(camara, str) or camara not in self._inventory.camaras:
+                self._log_invalid("revisar_camaras", camara=camara)
+                continue
+            actions.append({"kind": "revisar", "camara": camara, "preset": None})
         return actions
 
     def _action(self, name: str, arguments: dict) -> Action | None:

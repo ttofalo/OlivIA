@@ -112,3 +112,18 @@ def test_sin_api_key_avisa_que_no_esta_configurado():
 
     assert reply.text == NOT_CONFIGURED_TEXT
     assert reply.actions == []
+
+
+def test_revisar_camaras_da_una_accion_por_camara_sin_foto():
+    inv = inventory()
+    inv.camaras["fondo"] = {"descripcion": "El fondo"}
+    tool = make_tool("revisar_camaras", '{"camaras": ["cabania", "fondo", "cabania", "sotano"]}')
+    client, _ = make_client(make_message(tool_calls=[tool]))
+
+    reply = Assistant(settings(), inv, client=client).answer("todo ok? no me pases foto")
+
+    # Sin repetidas y sin cámaras inventadas.
+    assert reply.actions == [
+        {"kind": "revisar", "camara": "cabania", "preset": None},
+        {"kind": "revisar", "camara": "fondo", "preset": None},
+    ]

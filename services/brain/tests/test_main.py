@@ -95,7 +95,22 @@ def test_snapshot_seguro_publica_el_comando(armar):
     brain._handle_inbound({"chat": "c1", "text": "foto de la entrada", "kind": "text"})
 
     assert bus.published == [("casa/cmd/cam/entrada/snapshot", {"chat": "c1"})]
-    assert brain._pending == {"entrada": "c1"}
+    assert brain._pending["entrada"].chat == "c1"
+    assert brain._pending["entrada"].modos == {"entrada": "foto"}
+
+
+def test_jev_snapshot_con_no_me_pases_foto_va_al_llm(armar):
+    llm = AssistantFalso(
+        Reply(text=None, actions=[{"kind": "revisar", "camara": "entrada", "preset": None}])
+    )
+    brain, _ = armar(RouterFalso(decision("snapshot", 0.95, "entrada")), llm)
+
+    brain._handle_inbound(
+        {"chat": "c1", "text": "revisá la entrada, no me pases foto", "kind": "text"}
+    )
+
+    assert llm.textos == ["revisá la entrada, no me pases foto"]
+    assert brain._pending["entrada"].modos == {"entrada": "revisar"}
 
 
 def test_jev_dudoso_escala_al_llm_y_ejecuta_sus_acciones(armar):
@@ -108,12 +123,12 @@ def test_jev_dudoso_escala_al_llm_y_ejecuta_sus_acciones(armar):
 
     assert llm.textos == ["mostrame atrás"]
     assert bus.published == [("casa/cmd/cam/patio/snapshot", {"chat": "c1"})]
-    # Primero la bienvenida (chat nuevo), después el acuse instantáneo
-    # (aleatorio), después la respuesta del LLM.
-    assert bus.replies[0]["text"] == main_module.BIENVENIDA
-    assert bus.replies[1]["chat"] == "c1"
-    assert bus.replies[1]["text"] in main_module.ACKS
-    assert bus.replies[2] == {"chat": "c1", "text": "Ahí va", "image_path": None}
+    # Primero la bienvenida (chat nuevo), después el texto del LLM, que hace
+    # de acuse: uno solo, no el del LLM más uno enlatado.
+    assert bus.replies == [
+        {"chat": "c1", "text": main_module.BIENVENIDA, "image_path": None},
+        {"chat": "c1", "text": "Ahí va", "image_path": None},
+    ]
 
 
 def test_llm_sin_texto_ni_acciones_pide_que_repita(armar):
@@ -167,7 +182,8 @@ def test_audio_que_falla_avisa_y_no_rutea(armar, monkeypatch):
 
 def test_evento_snapshot_guarda_la_foto_y_la_manda(armar, settings):
     brain, bus = armar(RouterFalso(decision("otro", 0.9)))
-    brain._pending["entrada"] = "c1"
+    brain._pedir_camaras("c1", {"entrada": "foto"})
+    bus.replies.clear()
     foto = b"\x89PNG-falso"
 
     brain._handle_cam_event(
@@ -185,10 +201,101 @@ def test_evento_snapshot_guarda_la_foto_y_la_manda(armar, settings):
 
 def test_evento_snapshot_con_error_lo_cuenta(armar):
     brain, bus = armar(RouterFalso(decision("otro", 0.9)))
+    brain._pedir_camaras("c1", {"entrada": "foto"})
 
     brain._handle_cam_event("casa/evt/cam/entrada/snapshot", {"chat": "c1", "error": "timeout"})
 
     assert bus.replies[-1]["text"] == "No pude sacar la foto: timeout"
+
+
+FOTO_B64 = base64.b64encode(b"\xff\xd8-falso").decode()
+
+
+class AssistantConVision(AssistantFalso):
+    def check_people(self, image_b64: str, camara: str) -> str | None:
+        return "No se ve a nadie."
+
+
+def test_revisar_varias_camaras_un_acuse_un_mensaje_y_ninguna_foto(armar, inventario):
+    inventario.camaras["fondo"] = {"nombre": "Fondo"}
+    llm = AssistantConVision(
+        Reply(
+            text=None,
+            actions=[
+                {"kind": "revisar", "camara": c, "preset": None}
+                for c in ("entrada", "patio", "fondo")
+            ],
+        )
+    )
+    brain, bus = armar(RouterFalso(decision("otro", 0.3)), llm)
+
+    brain._handle_inbound({"chat": "c1", "text": "todo ok? no me pases foto", "kind": "text"})
+    evt = {"chat": "c1", "image_b64": FOTO_B64, "filename": "x.jpg"}
+    brain._handle_cam_event("casa/evt/cam/entrada/snapshot", evt)
+    brain._handle_cam_event(
+        "casa/evt/cam/patio/snapshot",
+        {"chat": "c1", "error": "patio: no pude conectar con la cámara"},
+    )
+    brain._handle_cam_event("casa/evt/cam/fondo/snapshot", evt)
+
+    textos = [r["text"] for r in bus.replies[1:]]  # sin la bienvenida
+    assert all(r["image_path"] is None for r in bus.replies)
+    assert len(textos) == 2
+    assert textos[0] in main_module.ACKS
+    assert textos[1] == (
+        "Entrada: No se ve a nadie.\n"
+        "Patio: no la pude ver (no pude conectar con la cámara).\n"
+        "Fondo: No se ve a nadie."
+    )
+
+
+def test_fotos_de_varias_camaras_salen_y_el_analisis_va_junto(armar):
+    llm = AssistantConVision(
+        Reply(
+            text=None,
+            actions=[
+                {"kind": "snapshot", "camara": c, "preset": None} for c in ("entrada", "patio")
+            ],
+        )
+    )
+    brain, bus = armar(RouterFalso(decision("otro", 0.3)), llm)
+
+    brain._handle_inbound({"chat": "c1", "text": "fotos de todas", "kind": "text"})
+    for cam in ("entrada", "patio"):
+        brain._handle_cam_event(
+            f"casa/evt/cam/{cam}/snapshot",
+            {"chat": "c1", "image_b64": FOTO_B64, "filename": f"{cam}.jpg"},
+        )
+
+    fotos = [r for r in bus.replies if r["image_path"]]
+    assert [f["text"] for f in fotos] == ["Entrada", "Patio"]
+    assert bus.replies[-1]["text"] == "Entrada: No se ve a nadie.\nPatio: No se ve a nadie."
+
+
+def test_ronda_vencida_avisa_las_que_no_contestaron(armar):
+    brain, bus = armar(RouterFalso(decision("otro", 0.9)), AssistantConVision(Reply(None, [])))
+    brain._pedir_camaras("c1", {"entrada": "revisar", "patio": "revisar"})
+    ronda = brain._pending["entrada"]
+    brain._handle_cam_event(
+        "casa/evt/cam/entrada/snapshot",
+        {"chat": "c1", "image_b64": FOTO_B64, "filename": "x.jpg"},
+    )
+
+    brain._ronda_vencida(ronda)
+
+    assert bus.replies[-1]["text"] == "Entrada: No se ve a nadie.\nPatio: no me contestó."
+    assert brain._pending == {}
+
+
+def test_foto_que_llega_sin_pedido_no_se_manda(armar):
+    brain, bus = armar(RouterFalso(decision("otro", 0.9)))
+
+    brain._handle_cam_event(
+        "casa/evt/cam/entrada/snapshot",
+        {"chat": "c1", "image_b64": FOTO_B64, "filename": "x.jpg"},
+    )
+
+    assert bus.replies == []
 
 
 def test_evento_ptz_confirma(armar):
