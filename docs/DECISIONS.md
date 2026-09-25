@@ -16,11 +16,11 @@ Ventaja extra: funciona con CGNAT y sin IP pública.
 
 Elegimos Baileys sobre un número descartable. El gateway queda aislado del resto para poder cambiar de canal sin tocar la lógica.
 
-## 003: Jev para el nivel 1, Claude para el nivel 2
+## 003: Jev para el nivel 1, un LLM para el nivel 2
 
 **2026-09-21.** Los mensajes de casa son repetitivos y la mayoría se resuelve con una clasificación. Jev devuelve decisiones tipadas con confianza calibrada en menos de medio segundo y no puede salirse del inventario.
 
-Un LLM en cada mensaje cuesta más, tarda más y puede alucinar un dispositivo. Claude entra cuando Jev duda o cuando hay que razonar.
+Un LLM en cada mensaje cuesta más, tarda más y puede alucinar un dispositivo. El LLM de nivel 2 (hoy DeepSeek) entra cuando Jev duda o cuando hay que razonar.
 
 Detalle en [JEV.md](JEV.md).
 
